@@ -20,3 +20,12 @@ letswork = "src.cli:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
