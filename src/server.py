@@ -16,13 +16,16 @@ def check_auth(provided_token: str) -> bool:
     return True
 
 
+def safe_resolve(path: str, root: str) -> str:
+    abs_root = os.path.abspath(root)
+    resolved = os.path.abspath(os.path.join(abs_root, path))
+    if not resolved.startswith(abs_root + os.sep) and resolved != abs_root:
+        raise ValueError("Access denied: path outside project directory")
+    return resolved
+
 @app.tool()
 def list_files(path: str = ".") -> str:
-    resolved_path = os.path.join(project_root, path)
-    resolved_path = os.path.abspath(resolved_path)
-    
-    if not resolved_path.startswith(os.path.abspath(project_root)):
-        raise ValueError("Access denied: path outside project directory")
+    resolved_path = safe_resolve(path, project_root)
         
     if not os.path.exists(resolved_path):
         raise ValueError(f"Path not found: {path}")
@@ -52,11 +55,7 @@ def list_files(path: str = ".") -> str:
 
 @app.tool()
 def read_file(path: str) -> str:
-    resolved_path = os.path.join(project_root, path)
-    resolved_path = os.path.abspath(resolved_path)
-    
-    if not resolved_path.startswith(os.path.abspath(project_root)):
-        raise ValueError("Access denied: path outside project directory")
+    resolved_path = safe_resolve(path, project_root)
         
     if not os.path.exists(resolved_path):
         raise ValueError(f"File not found: {path}")
@@ -76,12 +75,7 @@ def read_file(path: str) -> str:
 
 @app.tool()
 def write_file(path: str, content: str, user_id: str) -> str:
-    resolved_path = os.path.join(project_root, path)
-    resolved_path = os.path.abspath(resolved_path)
-    
-    if not resolved_path.startswith(os.path.abspath(project_root)):
-        raise ValueError("Access denied: path outside project directory")
-        
+    resolved_path = safe_resolve(path, project_root)
     relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
     
     is_locked, holder = lock_manager.is_locked(relative_path)
@@ -106,12 +100,7 @@ def write_file(path: str, content: str, user_id: str) -> str:
 
 @app.tool()
 def lock_file(path: str, user_id: str) -> str:
-    resolved_path = os.path.join(project_root, path)
-    resolved_path = os.path.abspath(resolved_path)
-    
-    if not resolved_path.startswith(os.path.abspath(project_root)):
-        raise ValueError("Access denied: path outside project directory")
-        
+    resolved_path = safe_resolve(path, project_root)
     relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
     
     is_locked, holder = lock_manager.is_locked(relative_path)
@@ -127,12 +116,7 @@ def lock_file(path: str, user_id: str) -> str:
 
 @app.tool()
 def unlock_file(path: str, user_id: str) -> str:
-    resolved_path = os.path.join(project_root, path)
-    resolved_path = os.path.abspath(resolved_path)
-    
-    if not resolved_path.startswith(os.path.abspath(project_root)):
-        raise ValueError("Access denied: path outside project directory")
-        
+    resolved_path = safe_resolve(path, project_root)
     relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
     
     if not lock_manager.release_lock(relative_path, user_id):
