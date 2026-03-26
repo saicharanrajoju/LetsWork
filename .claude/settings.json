@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git -C /Users/saicharanrajoju/Desktop/LetsWork diff --name-only HEAD)",
       "Bash(git -C /Users/saicharanrajoju/Desktop/LetsWork status)",
-      "Bash(git -C /Users/saicharanrajoju/Desktop/LetsWork diff docs/spec.md)"
+      "Bash(git -C /Users/saicharanrajoju/Desktop/LetsWork diff docs/spec.md)",
+      "Bash(git -C /Users/saicharanrajoju/Desktop/LetsWork diff tests/__init__.py)"
     ]
   }
 }
