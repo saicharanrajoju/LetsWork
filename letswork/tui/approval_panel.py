@@ -1,7 +1,7 @@
 from textual.containers import Vertical
 from textual.widgets import RichLog, Static
 from textual.app import ComposeResult
-from src.events import EventType
+from letswork.events import EventType
 
 class ApprovalPanel(Vertical):
     BINDINGS = [("a", "approve", "Approve"), ("r", "reject", "Reject")]

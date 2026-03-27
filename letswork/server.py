@@ -1,9 +1,9 @@
 import os
 from mcp.server.fastmcp import FastMCP
-from src.filelock import LockManager
-from src.auth import validate_token
-from src.events import EventLog, EventType
-from src.approval import ApprovalQueue
+from letswork.filelock import LockManager
+from letswork.auth import validate_token
+from letswork.events import EventLog, EventType
+from letswork.approval import ApprovalQueue
 
 app = FastMCP("letswork")
 lock_manager = LockManager()
@@ -46,7 +46,7 @@ def list_files(token: str, path: str = ".") -> str:
     except ValueError:
         event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
         raise
-    event_log.emit(EventType.FILE_TREE_REQUEST, "host", {"path": path})
+    event_log.emit(EventType.FILE_TREE_REQUEST, user_id, {"path": path})
 
     if not os.path.exists(resolved_path):
         raise ValueError(f"Path not found: {path}")
@@ -84,7 +84,7 @@ def read_file(token: str, path: str) -> str:
     except ValueError:
         event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
         raise
-    event_log.emit(EventType.FILE_READ, "host", {"path": path})
+    event_log.emit(EventType.FILE_READ, user_id, {"path": path})
 
     if not os.path.exists(resolved_path):
         event_log.emit(EventType.ERROR, user_id, {"error": f"File not found: {path}"})

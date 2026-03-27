@@ -1,4 +1,4 @@
-from src.filelock import LockManager
+from letswork.filelock import LockManager
 
 
 def test_acquire_lock_success():

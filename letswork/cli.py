@@ -1,8 +1,8 @@
 import os
 import click
-import src.server as server_module
-from src.auth import generate_token
-from src.tunnel import start_tunnel, stop_tunnel
+import letswork.server as server_module
+from letswork.auth import generate_token
+from letswork.tunnel import start_tunnel, stop_tunnel
 
 
 @click.group()
@@ -16,8 +16,8 @@ def cli():
 def start(port):
     """Start a LetsWork collaboration session."""
     import threading
-    from src.events import EventLog
-    from src.launcher import launch_with_claude_code
+    from letswork.events import EventLog
+    from letswork.launcher import launch_with_claude_code
 
     # Set up project root
     project_root = os.getcwd()
@@ -33,7 +33,7 @@ def start(port):
     server_module.event_log = event_log
 
     # Set up approval queue
-    from src.approval import ApprovalQueue
+    from letswork.approval import ApprovalQueue
     approval_queue = ApprovalQueue(project_root)
     server_module.approval_queue = approval_queue
 
@@ -90,10 +90,10 @@ def join(url, token, user):
     """Join a LetsWork session as a guest."""
     if not url.endswith("/mcp"):
         url = url.rstrip("/") + "/mcp"
-    from src.events import EventLog
-    from src.filelock import LockManager
-    from src.tui.app import LetsWorkApp
-    from src.launcher import launch_guest_claude_code
+    from letswork.events import EventLog
+    from letswork.filelock import LockManager
+    from letswork.tui.app import LetsWorkApp
+    from letswork.launcher import launch_guest_claude_code
 
     click.echo(f"Connecting to {url}...")
     click.echo(f"User: {user}")

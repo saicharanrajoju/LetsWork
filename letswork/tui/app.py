@@ -1,16 +1,16 @@
 import os
 from rich.text import Text
-from src.tui.approval_panel import ApprovalPanel
-from src.tui.chat import ChatWidget
-from src.events import EventLog, Event, EventType
-from src.tui.file_viewer import FileViewerWidget
+from letswork.tui.approval_panel import ApprovalPanel
+from letswork.tui.chat import ChatWidget
+from letswork.events import EventLog, Event, EventType
+from letswork.tui.file_viewer import FileViewerWidget
 from textual.widgets import Tree
-from src.tui.file_tree import FileTreeWidget
-from src.filelock import LockManager
+from letswork.tui.file_tree import FileTreeWidget
+from letswork.filelock import LockManager
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.widgets import Header, Footer, RichLog
-from src.remote_client import RemoteClient
+from letswork.remote_client import RemoteClient
 
 class LetsWorkApp(App):
     TITLE = "LetsWork"
@@ -88,7 +88,7 @@ class LetsWorkApp(App):
                                  remote_client=self.remote_client, id="file-tree-panel")
             yield FileViewerWidget(remote_client=self.remote_client, id="file-viewer-panel")
             yield RichLog(id="activity-panel", markup=True, highlight=True, wrap=True)
-            yield ChatWidget(self.event_log, user_id=self.user_id, id="chat-panel")
+            yield ChatWidget(self.event_log, user_id=self.user_id, remote_client=self.remote_client if self.guest_mode else None, id="chat-panel")
             if self.approval_queue is not None:
                 yield ApprovalPanel(self.approval_queue, self.event_log, id="approval-panel")
         yield Footer()
@@ -99,6 +99,11 @@ class LetsWorkApp(App):
             activity = self.query_one("#activity-panel", RichLog)
             if connected:
                 activity.write("[bold green]✅ Connected to host[/bold green]")
+                try:
+                    tree = self.query_one("#file-tree-panel", FileTreeWidget)
+                    tree.refresh_tree()
+                except Exception:
+                    pass
             else:
                 activity.write("[bold red]❌ Failed to connect to host[/bold red]")
 
@@ -314,7 +319,7 @@ class LetsWorkApp(App):
         self.exit()
 
 if __name__ == "__main__":
-    from src.events import EventLog
+    from letswork.events import EventLog
     event_log = EventLog()
     app = LetsWorkApp(project_root=os.getcwd(), event_log=event_log)
     app.run()

@@ -28,8 +28,8 @@ def launch_with_claude_code(project_root: str, tunnel_url: str, token: str, port
         print("Claude Code will connect to your LetsWork MCP server automatically.")
 
     # Launch TUI in current terminal
-    import src.server as server_module
-    from src.tui.app import LetsWorkApp
+    import letswork.server as server_module
+    from letswork.tui.app import LetsWorkApp
 
     app = LetsWorkApp(
         project_root=project_root,

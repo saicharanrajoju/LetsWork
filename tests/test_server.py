@@ -1,7 +1,7 @@
 import os
 import pytest
-import src.server as server_module
-from src.server import (
+import letswork.server as server_module
+from letswork.server import (
     safe_resolve,
     list_files,
     read_file,

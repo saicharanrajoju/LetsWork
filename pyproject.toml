@@ -18,10 +18,10 @@ dependencies = [
 ]
 
 [project.scripts]
-letswork = "src.cli:cli"
+letswork = "letswork.cli:cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["letswork"]
 
 [project.optional-dependencies]
 dev = [
@@ -31,4 +31,4 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["src*"]
+include = ["letswork*"]

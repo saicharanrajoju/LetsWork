@@ -1,13 +1,15 @@
+from datetime import datetime
 from textual.containers import Vertical
 from textual.widgets import RichLog, Input
 from textual.app import ComposeResult
-from src.events import EventLog, EventType, Event
+from letswork.events import EventLog, EventType, Event
 
 class ChatWidget(Vertical):
-    def __init__(self, event_log: EventLog, user_id: str = "host", **kwargs):
+    def __init__(self, event_log: EventLog, user_id: str = "host", remote_client=None, **kwargs):
         super().__init__(**kwargs)
         self.event_log = event_log
         self.user_id = user_id
+        self.remote_client = remote_client
 
     def compose(self) -> ComposeResult:
         yield RichLog(id="chat-messages", markup=True, highlight=True, wrap=True)
@@ -26,8 +28,19 @@ class ChatWidget(Vertical):
         message = event.value.strip()
         if not message:
             return
-            
-        self.event_log.emit(EventType.CHAT_MESSAGE, self.user_id, {"message": message})
+
+        if self.remote_client:
+            # Guest mode — send via MCP
+            self.remote_client.send_message(message)
+            # Immediate local feedback while server echo catches up
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            self.query_one("#chat-messages", RichLog).write(
+                f"[{timestamp}] 💬 {self.user_id}: {message}"
+            )
+        else:
+            # Host mode — emit to shared in-memory event_log
+            self.event_log.emit(EventType.CHAT_MESSAGE, self.user_id, {"message": message})
+
         event.input.value = ""
 
     def _on_event(self, event: Event) -> None:

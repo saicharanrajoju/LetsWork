@@ -1,7 +1,7 @@
 import pytest
 import subprocess
 from unittest import mock
-from src.tunnel import start_tunnel, stop_tunnel
+from letswork.tunnel import start_tunnel, stop_tunnel
 
 
 @mock.patch("shutil.which", return_value=None)

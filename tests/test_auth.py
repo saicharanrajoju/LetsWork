@@ -1,4 +1,4 @@
-from src.auth import generate_token, validate_token
+from letswork.auth import generate_token, validate_token
 
 
 def test_generate_token_length():
