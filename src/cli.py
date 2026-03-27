@@ -93,6 +93,7 @@ def join(url, token, user):
     from src.events import EventLog
     from src.filelock import LockManager
     from src.tui.app import LetsWorkApp
+    from src.launcher import launch_guest_claude_code
 
     click.echo(f"Connecting to {url}...")
     click.echo(f"User: {user}")
@@ -105,6 +106,8 @@ def join(url, token, user):
     # Guest doesn't have local project root — use a temp dir
     # Files are accessed remotely through MCP tools
     project_root = os.getcwd()
+
+    launch_guest_claude_code(url, token)
 
     app = LetsWorkApp(
         project_root=project_root,

@@ -1,4 +1,5 @@
 import os
+from rich.text import Text
 from src.tui.approval_panel import ApprovalPanel
 from src.tui.chat import ChatWidget
 from src.events import EventLog, Event, EventType
@@ -202,8 +203,9 @@ class LetsWorkApp(App):
                     tree.refresh_tree()
                 except Exception:
                     pass
-            except Exception:
-                pass
+            except Exception as e:
+                activity = self.query_one("#activity-panel", RichLog)
+                activity.write(Text(f"❌ Connection error: {e}", style="bold red"))
             return
         # Original local event polling below — keep unchanged
         current_count = len(self.event_log._events)
@@ -213,7 +215,10 @@ class LetsWorkApp(App):
             try:
                 activity = self.query_one("#activity-panel", RichLog)
                 for event in new_events:
-                    activity.write(event.message)
+                    if event.event_type == EventType.ERROR:
+                        activity.write(Text(event.message, style="bold red"))
+                    else:
+                        activity.write(event.message)
             except Exception:
                 pass
             # Refresh file tree to show new lock status

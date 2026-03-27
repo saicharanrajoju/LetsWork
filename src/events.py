@@ -12,6 +12,7 @@ class EventType(str, Enum):
     FILE_UNLOCK = "file_unlock"
     CHAT_MESSAGE = "chat_message"
     FILE_TREE_REQUEST = "file_tree_request"
+    ERROR = "error"
 
 @dataclass
 class Event:

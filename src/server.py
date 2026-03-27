@@ -40,12 +40,17 @@ def safe_resolve(path: str, root: str) -> str:
 def list_files(token: str, path: str = ".") -> str:
     if not check_auth(token):
         raise ValueError("Unauthorized: invalid token")
-    resolved_path = safe_resolve(path, project_root)
+    user_id = get_user(token)
+    try:
+        resolved_path = safe_resolve(path, project_root)
+    except ValueError:
+        event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
+        raise
     event_log.emit(EventType.FILE_TREE_REQUEST, "host", {"path": path})
-        
+
     if not os.path.exists(resolved_path):
         raise ValueError(f"Path not found: {path}")
-        
+
     if not os.path.isdir(resolved_path):
         raise ValueError(f"Not a directory: {path}")
         
@@ -73,18 +78,25 @@ def list_files(token: str, path: str = ".") -> str:
 def read_file(token: str, path: str) -> str:
     if not check_auth(token):
         raise ValueError("Unauthorized: invalid token")
-    resolved_path = safe_resolve(path, project_root)
+    user_id = get_user(token)
+    try:
+        resolved_path = safe_resolve(path, project_root)
+    except ValueError:
+        event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
+        raise
     event_log.emit(EventType.FILE_READ, "host", {"path": path})
-        
+
     if not os.path.exists(resolved_path):
+        event_log.emit(EventType.ERROR, user_id, {"error": f"File not found: {path}"})
         raise ValueError(f"File not found: {path}")
-        
+
     if not os.path.isfile(resolved_path):
         raise ValueError(f"Not a file: {path}")
-        
+
     if os.path.getsize(resolved_path) > 1_048_576:
+        event_log.emit(EventType.ERROR, user_id, {"error": f"File too large: {path}"})
         raise ValueError(f"File too large: {path} exceeds 1MB limit")
-        
+
     try:
         with open(resolved_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -97,17 +109,23 @@ def write_file(token: str, path: str, content: str) -> str:
     if not check_auth(token):
         raise ValueError("Unauthorized: invalid token")
     user_id = get_user(token)
-    resolved_path = safe_resolve(path, project_root)
+    try:
+        resolved_path = safe_resolve(path, project_root)
+    except ValueError:
+        event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
+        raise
     relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
 
     is_locked, holder = lock_manager.is_locked(relative_path)
     if is_locked and holder != user_id:
+        event_log.emit(EventType.ERROR, user_id, {"error": f"Write rejected, locked by {holder}: {path}"})
         raise ValueError(f"File is locked by {holder}. Cannot write.")
-        
+
     if not is_locked:
         lock_manager.acquire_lock(relative_path, user_id)
-        
+
     if len(content.encode("utf-8")) > 1_048_576:
+        event_log.emit(EventType.ERROR, user_id, {"error": f"Write rejected, content too large: {path}"})
         raise ValueError("Content too large: exceeds 1MB limit")
 
     if approval_queue is not None:
@@ -130,11 +148,16 @@ def lock_file(token: str, path: str) -> str:
     if not check_auth(token):
         raise ValueError("Unauthorized: invalid token")
     user_id = get_user(token)
-    resolved_path = safe_resolve(path, project_root)
+    try:
+        resolved_path = safe_resolve(path, project_root)
+    except ValueError:
+        event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
+        raise
     relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
-    
+
     is_locked, holder = lock_manager.is_locked(relative_path)
     if is_locked and holder != user_id:
+        event_log.emit(EventType.ERROR, user_id, {"error": f"Lock conflict, held by {holder}: {path}"})
         raise ValueError(f"File is already locked by {holder}")
         
     if is_locked and holder == user_id:
@@ -150,10 +173,15 @@ def unlock_file(token: str, path: str) -> str:
     if not check_auth(token):
         raise ValueError("Unauthorized: invalid token")
     user_id = get_user(token)
-    resolved_path = safe_resolve(path, project_root)
+    try:
+        resolved_path = safe_resolve(path, project_root)
+    except ValueError:
+        event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
+        raise
     relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
-    
+
     if not lock_manager.release_lock(relative_path, user_id):
+        event_log.emit(EventType.ERROR, user_id, {"error": f"Unlock failed, wrong owner: {path}"})
         raise ValueError(f"Cannot unlock {path}: you do not hold this lock")
         
     event_log.emit(EventType.FILE_UNLOCK, user_id, {"path": path})
