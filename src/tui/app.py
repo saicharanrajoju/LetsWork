@@ -16,59 +16,52 @@ class LetsWorkApp(App):
     TITLE = "LetsWork"
     SUB_TITLE = "Collaborative Coding Dashboard"
     BINDINGS = [
-        ("ctrl+q", "quit", "^Q Quit"),
-        ("ctrl+e", "toggle_edit", "^E Edit"),
-        ("ctrl+s", "submit_change", "^S Submit"),
-        ("escape", "cancel_edit", "Esc Cancel"),
+        ("ctrl+q", "quit", "Quit"),
+        ("ctrl+e", "toggle_edit", "Edit File"),
+        ("ctrl+s", "submit_change", "Save"),
+        ("escape", "cancel_edit", "Cancel"),
     ]
 
     CSS = """
     #main-container {
         layout: grid;
         grid-size: 2 3;
-        grid-columns: 1fr 2fr;
-        grid-rows: 3fr 1fr 1fr;
+        grid-columns: 1fr 3fr;
+        grid-rows: 5fr 2fr 1fr;
     }
-
     #file-tree-panel {
-        border: solid green;
+        border: solid $secondary;
         height: 100%;
         overflow-y: auto;
         scrollbar-gutter: stable;
     }
-
     #file-viewer-panel {
-        border: solid blue;
+        border: solid $primary;
         height: 100%;
         overflow-y: auto;
     }
-
     #activity-panel {
-        border: solid yellow;
+        border: solid $warning;
         height: 100%;
         overflow-y: auto;
     }
-
     #chat-panel {
-        border: solid cyan;
+        border: solid $accent;
         height: 100%;
         overflow-y: auto;
     }
-
     #approval-panel {
-        border: solid magenta;
+        border: solid $error;
         column-span: 2;
         height: 100%;
         overflow-y: auto;
     }
-
     .panel-title {
         text-style: bold;
     }
-
     .guest-mode #main-container {
         grid-size: 2 2;
-        grid-rows: 3fr 1fr;
+        grid-rows: 5fr 2fr;
     }
     """
 
@@ -111,7 +104,9 @@ class LetsWorkApp(App):
 
         if self.guest_mode:
             self.add_class("guest-mode")
-            self.sub_title = f"Guest: {self.user_id} — Connected to {self.mcp_url}"
+            self.sub_title = f"Guest: {self.user_id} — {self.mcp_url}"
+        else:
+            self.sub_title = f"Host — {self.project_root}"
 
         activity = self.query_one("#activity-panel", RichLog)
         activity.write("[bold yellow]📡 Activity Log[/bold yellow]")
@@ -239,6 +234,13 @@ class LetsWorkApp(App):
                                 break
             except Exception:
                 pass
+        lock_count = len(self.lock_manager.get_locks()) if hasattr(self, 'lock_manager') else 0
+        lock_info = f" — 🔒 {lock_count} locks" if lock_count > 0 else ""
+        if self.guest_mode:
+            base = f"Guest: {self.user_id} — {self.mcp_url}"
+        else:
+            base = f"Host — {self.project_root}"
+        self.sub_title = base + lock_info
 
     def handle_event(self, event: Event) -> None:
         pass

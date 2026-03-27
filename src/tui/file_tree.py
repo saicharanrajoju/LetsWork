@@ -1,4 +1,5 @@
 import os
+from rich.text import Text
 from textual.widgets import Tree
 
 class FileTreeWidget(Tree):
@@ -60,16 +61,16 @@ class FileTreeWidget(Tree):
         files_list.sort(key=lambda x: x[0].lower())
 
         for dir_name, full_rel_path in dirs_list:
-            dir_node = node.add(f"📁 {dir_name}", data={"path": full_rel_path, "is_dir": True})
+            dir_node = node.add(Text(f"📁 {dir_name}", style="bold cyan"), data={"path": full_rel_path, "is_dir": True})
             sub_listing = self.remote_client.list_files(full_rel_path)
             if sub_listing and not sub_listing.startswith("Error") and sub_listing != "Directory is empty":
                 self._populate_node(dir_node, sub_listing)
 
         for file_name, full_rel_path, holder in files_list:
             if holder:
-                label = f"📄 {file_name} 🔒 {holder}"
+                label = Text(f"  {file_name} 🔒 {holder}", style="bold red")
             else:
-                label = f"📄 {file_name}"
+                label = Text(f"  {file_name}", style="white")
             node.add_leaf(label, data={"path": full_rel_path, "is_dir": False})
 
     def _add_directory(self, parent_node, abs_path: str, rel_path: str) -> None:
@@ -95,7 +96,7 @@ class FileTreeWidget(Tree):
 
         for dir_name in dirs_list:
             entry_rel = os.path.join(rel_path, dir_name) if rel_path else dir_name
-            label = f"📁 {dir_name}"
+            label = Text(f"📁 {dir_name}", style="bold cyan")
             node = parent_node.add(label, data={"path": entry_rel, "is_dir": True})
             self._add_directory(node, os.path.join(abs_path, dir_name), entry_rel)
 
@@ -103,9 +104,9 @@ class FileTreeWidget(Tree):
             entry_rel = os.path.join(rel_path, file_name) if rel_path else file_name
             is_locked, holder = self.lock_manager.is_locked(entry_rel)
             if is_locked:
-                label = f"📄 {file_name} 🔒 {holder}"
+                label = Text(f"  {file_name} 🔒 {holder}", style="bold red")
             else:
-                label = f"📄 {file_name}"
+                label = Text(f"  {file_name}", style="white")
             parent_node.add_leaf(label, data={"path": entry_rel, "is_dir": False})
 
     def should_ignore(self, name: str) -> bool:
