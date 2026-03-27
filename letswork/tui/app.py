@@ -153,13 +153,6 @@ class LetsWorkApp(App):
         except Exception:
             pass
 
-        try:
-            # Refresh file tree periodically to catch new/deleted files
-            tree = self.query_one("#file-tree-panel", FileTreeWidget)
-            tree.refresh_tree()
-        except Exception:
-            pass
-
         # Scan for new files in project root to log in activity
         try:
             for root_dir, dirs, files in os.walk(self.project_root):

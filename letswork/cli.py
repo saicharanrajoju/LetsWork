@@ -58,6 +58,9 @@ def start(port):
 
     # Start MCP server in a background thread
     def run_server():
+        import logging
+        logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
+        logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
         server_module.app.settings.host = "127.0.0.1"
         server_module.app.settings.port = port
         server_module.app.settings.stateless_http = True
