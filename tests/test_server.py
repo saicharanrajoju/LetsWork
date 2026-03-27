@@ -109,3 +109,4 @@ def test_get_status_with_locks():
     result = get_status()
     assert "hello.txt" in result
     assert "locked by alice" in result
+# This is a comment

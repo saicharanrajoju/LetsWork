@@ -1,0 +1,1 @@
+"""LetsWork TUI dashboard."""

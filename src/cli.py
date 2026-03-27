@@ -14,30 +14,107 @@ def cli():
 @cli.command()
 @click.option("--port", default=8000, type=int, help="Port for the MCP server")
 def start(port):
-    server_module.project_root = os.getcwd()
+    """Start a LetsWork collaboration session."""
+    import os
+    import threading
+    import src.server as server_module
+    from src.auth import generate_token
+    from src.tunnel import start_tunnel, stop_tunnel
+    from src.events import EventLog
+    from src.launcher import launch_with_claude_code
+
+    # Set up project root
+    project_root = os.getcwd()
+    server_module.project_root = project_root
+
+    # Generate token
     token = generate_token()
     server_module.session_token = token
-    url, tunnel_process = start_tunnel(port)
-    
+
+    # Set up event log
+    event_log = EventLog()
+    server_module.event_log = event_log
+
+    # Start tunnel
+    try:
+        url, tunnel_process = start_tunnel(port)
+    except RuntimeError as e:
+        click.echo(f"Error: {e}")
+        return
+
+    # Print session info
     click.echo("")
     click.echo("╔══════════════════════════════════════════════════╗")
     click.echo("║  LetsWork Session Active                        ║")
     click.echo("║                                                 ║")
-    click.echo(f"║  URL:   {url}  ║")
-    click.echo(f"║  Token: {token}  ║")
+    click.echo(f"║  URL:   {url}/mcp")
+    click.echo(f"║  Token: {token}")
     click.echo("║                                                 ║")
     click.echo("║  Share both with your collaborator.             ║")
-    click.echo("║  Press Ctrl+C to end session.                   ║")
     click.echo("╚══════════════════════════════════════════════════╝")
     click.echo("")
-    
+
+    # Start MCP server in a background thread
+    def run_server():
+        server_module.app.settings.host = "127.0.0.1"
+        server_module.app.settings.port = port
+        server_module.app.settings.stateless_http = True
+        if hasattr(server_module.app.settings, "transport_security") and server_module.app.settings.transport_security:
+            server_module.app.settings.transport_security.enable_dns_rebinding_protection = False
+        server_module.app.run(transport="streamable-http")
+
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+
+    # Give server a moment to start
+    import time
+    time.sleep(2)
+
+    # Launch tmux split with TUI + Claude Code
     try:
-        server_module.app.run(transport="streamable-http", host="127.0.0.1", port=port)
+        launch_with_claude_code(project_root, url, token, port)
     except KeyboardInterrupt:
         click.echo("\nShutting down...")
     finally:
         stop_tunnel(tunnel_process)
         click.echo("Session ended.")
+
+
+@cli.command()
+@click.argument("url")
+@click.option("--token", prompt="Enter session token", help="Secret token from the host")
+@click.option("--user", default="guest", help="Your username")
+def join(url, token, user):
+    """Join a LetsWork session as a guest."""
+    import os
+    from src.events import EventLog
+    from src.approval import ApprovalQueue
+    from src.filelock import LockManager
+    from src.tui.app import LetsWorkApp
+
+    click.echo(f"Connecting to {url}...")
+    click.echo(f"User: {user}")
+    click.echo("")
+
+    # Guest TUI uses a local event log for display
+    event_log = EventLog()
+    lock_manager = LockManager()
+    
+    # Guest doesn't have local project root — use a temp dir
+    # Files are accessed remotely through MCP tools
+    project_root = os.getcwd()
+
+    app = LetsWorkApp(
+        project_root=project_root,
+        lock_manager=lock_manager,
+        event_log=event_log,
+        approval_queue=None,
+        guest_mode=True,
+        mcp_url=url,
+        mcp_token=token,
+        user_id=user,
+    )
+    app.run()
 
 
 @cli.command()

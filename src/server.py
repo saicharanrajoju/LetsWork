@@ -2,9 +2,13 @@ import os
 from mcp.server.fastmcp import FastMCP
 from src.filelock import LockManager
 from src.auth import validate_token
+from src.events import EventLog, EventType
+from src.approval import ApprovalQueue, PendingChange
 
 app = FastMCP("letswork")
 lock_manager = LockManager()
+event_log = EventLog()
+approval_queue: ApprovalQueue | None = None
 session_token: str = ""
 project_root: str = ""
 
@@ -26,6 +30,7 @@ def safe_resolve(path: str, root: str) -> str:
 @app.tool()
 def list_files(path: str = ".") -> str:
     resolved_path = safe_resolve(path, project_root)
+    event_log.emit(EventType.FILE_TREE_REQUEST, "host", {"path": path})
         
     if not os.path.exists(resolved_path):
         raise ValueError(f"Path not found: {path}")
@@ -56,6 +61,7 @@ def list_files(path: str = ".") -> str:
 @app.tool()
 def read_file(path: str) -> str:
     resolved_path = safe_resolve(path, project_root)
+    event_log.emit(EventType.FILE_READ, "host", {"path": path})
         
     if not os.path.exists(resolved_path):
         raise ValueError(f"File not found: {path}")
@@ -87,15 +93,21 @@ def write_file(path: str, content: str, user_id: str) -> str:
         
     if len(content.encode("utf-8")) > 1_048_576:
         raise ValueError("Content too large: exceeds 1MB limit")
-        
-    dir_name = os.path.dirname(resolved_path)
-    if dir_name:
-        os.makedirs(dir_name, exist_ok=True)
-        
-    with open(resolved_path, "w", encoding="utf-8") as f:
-        f.write(content)
-        
-    return f"Successfully wrote to {path} (locked by {user_id})"
+
+    if approval_queue is not None:
+        change = approval_queue.submit(user_id, path, content)
+        event_log.emit(EventType.FILE_WRITE, user_id, {"path": path, "status": "pending_approval", "change_id": change.id})
+        return f"Change submitted for approval (ID: {change.id}). Waiting for host to approve."
+    else:
+        # No approval queue (standalone mode) — write directly
+        abs_path = safe_resolve(path, project_root)
+        parent = os.path.dirname(abs_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(abs_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        event_log.emit(EventType.FILE_WRITE, user_id, {"path": path})
+        return f"Successfully wrote to {path} (locked by {user_id})"
 
 
 @app.tool()
@@ -111,6 +123,7 @@ def lock_file(path: str, user_id: str) -> str:
         return f"File {path} is already locked by you"
         
     lock_manager.acquire_lock(relative_path, user_id)
+    event_log.emit(EventType.FILE_LOCK, user_id, {"path": path})
     return f"Locked {path} for {user_id}"
 
 
@@ -122,6 +135,7 @@ def unlock_file(path: str, user_id: str) -> str:
     if not lock_manager.release_lock(relative_path, user_id):
         raise ValueError(f"Cannot unlock {path}: you do not hold this lock")
         
+    event_log.emit(EventType.FILE_UNLOCK, user_id, {"path": path})
     return f"Unlocked {path}"
 
 
@@ -139,3 +153,62 @@ def get_status() -> str:
             status_lines.append(f"  {path} — locked by {user_id}")
             
     return "\n".join(status_lines)
+
+
+@app.tool()
+def send_message(user_id: str, message: str) -> str:
+    if not message.strip():
+        raise ValueError("Message cannot be empty")
+    event_log.emit(EventType.CHAT_MESSAGE, user_id, {"message": message})
+    return f"Message sent by {user_id}"
+
+
+@app.tool()
+def get_events(since_index: int = 0) -> str:
+    events = event_log.get_recent(count=200)
+    if since_index >= len(event_log._events):
+        return "no_new_events"
+    
+    new_events = event_log._events[since_index:]
+    result_lines = []
+    for event in new_events:
+        result_lines.append(event.message)
+        
+    result_lines.append(f"__INDEX__:{len(event_log._events)}")
+    return "\n".join(result_lines)
+
+
+@app.tool()
+def get_pending_changes() -> str:
+    if approval_queue is None:
+        return "No approval system active"
+        
+    pending = approval_queue.get_pending()
+    if not pending:
+        return "No pending changes"
+        
+    result_lines = []
+    for change in pending:
+        result_lines.append(f"Change {change.id}: {change.path} by {change.user_id}")
+        result_lines.append(approval_queue.get_diff(change.id))
+        result_lines.append("")
+        
+    return "\n".join(result_lines)
+
+
+@app.tool()
+def approve_change(change_id: str) -> str:
+    if approval_queue is None:
+        raise ValueError("Approval system not active")
+    if not approval_queue.approve(change_id):
+        raise ValueError(f"Change {change_id} not found")
+    return f"Change {change_id} approved and written to disk"
+
+
+@app.tool()
+def reject_change(change_id: str) -> str:
+    if approval_queue is None:
+        raise ValueError("Approval system not active")
+    if not approval_queue.reject(change_id):
+        raise ValueError(f"Change {change_id} not found")
+    return f"Change {change_id} rejected"
