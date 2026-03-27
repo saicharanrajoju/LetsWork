@@ -15,11 +15,7 @@ def cli():
 @click.option("--port", default=8000, type=int, help="Port for the MCP server")
 def start(port):
     """Start a LetsWork collaboration session."""
-    import os
     import threading
-    import src.server as server_module
-    from src.auth import generate_token
-    from src.tunnel import start_tunnel, stop_tunnel
     from src.events import EventLog
     from src.launcher import launch_with_claude_code
 
@@ -27,13 +23,19 @@ def start(port):
     project_root = os.getcwd()
     server_module.project_root = project_root
 
-    # Generate token
+    # Generate token and register host
     token = generate_token()
     server_module.session_token = token
+    server_module.register_user(token, "host")
 
     # Set up event log
     event_log = EventLog()
     server_module.event_log = event_log
+
+    # Set up approval queue
+    from src.approval import ApprovalQueue
+    approval_queue = ApprovalQueue(project_root)
+    server_module.approval_queue = approval_queue
 
     # Start tunnel
     try:
@@ -86,9 +88,7 @@ def start(port):
 @click.option("--user", default="guest", help="Your username")
 def join(url, token, user):
     """Join a LetsWork session as a guest."""
-    import os
     from src.events import EventLog
-    from src.approval import ApprovalQueue
     from src.filelock import LockManager
     from src.tui.app import LetsWorkApp
 

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.saicharanrajoju/letswork",
+  "version": "0.1.2",
+  "description": "Real-time collaborative coding via MCP — two developers, one codebase",
+  "repository": {
+    "url": "https://github.com/saicharanrajoju/LetsWork",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registry_type": "pypi",
+      "name": "letswork",
+      "version": "0.1.2"
+    }
+  ]
+}

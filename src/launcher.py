@@ -1,6 +1,5 @@
 import subprocess
 import shutil
-import os
 import sys
 
 
@@ -23,10 +22,10 @@ def launch_with_claude_code(project_root: str, tunnel_url: str, token: str, port
             print("   Open a second terminal and run: claude")
     else:
         # Linux/Windows: just print instructions
-        print(f"Open a second terminal and run:")
+        print("Open a second terminal and run:")
         print(f"  cd {project_root}")
-        print(f"  claude")
-        print(f"Claude Code will connect to your LetsWork MCP server automatically.")
+        print("  claude")
+        print("Claude Code will connect to your LetsWork MCP server automatically.")
 
     # Launch TUI in current terminal
     import src.server as server_module
@@ -36,10 +35,7 @@ def launch_with_claude_code(project_root: str, tunnel_url: str, token: str, port
         project_root=project_root,
         lock_manager=server_module.lock_manager,
         event_log=server_module.event_log,
+        approval_queue=server_module.approval_queue,
     )
     app.run()
 
-
-def kill_session() -> None:
-    """No-op."""
-    pass

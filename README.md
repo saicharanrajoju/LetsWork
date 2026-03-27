@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.saicharanrajoju/letswork -->
+
 # LetsWork
 
 **Google Docs for AI-assisted coding** — real-time collaboration on a local codebase using two independent Claude subscriptions.
@@ -60,10 +62,15 @@ Use the token when prompted. You now have full access to the shared codebase thr
 |------|-------------|
 | `list_files` | List files and directories with lock status |
 | `read_file` | Read file contents (1MB limit) |
-| `write_file` | Write to a file (auto-locks if needed) |
+| `write_file` | Write to a file (requires lock) |
 | `lock_file` | Lock a file for exclusive editing |
 | `unlock_file` | Release a file lock |
 | `get_status` | Show session info and active locks |
+| `send_message` | Send a chat message to the other developer |
+| `get_events` | Get activity events since a given index |
+| `get_pending_changes` | View changes awaiting host approval |
+| `approve_change` | Approve a pending change (host only) |
+| `reject_change` | Reject a pending change (host only) |
 
 ## Security
 

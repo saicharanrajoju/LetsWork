@@ -1,6 +1,4 @@
 import os
-import time
-from src.approval import ApprovalQueue
 from src.tui.approval_panel import ApprovalPanel
 from src.tui.chat import ChatWidget
 from src.events import EventLog, Event, EventType
@@ -9,9 +7,8 @@ from textual.widgets import Tree
 from src.tui.file_tree import FileTreeWidget
 from src.filelock import LockManager
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Header, Footer, Static, RichLog
-from textual.widget import Widget
+from textual.containers import Container
+from textual.widgets import Header, Footer, RichLog
 
 class LetsWorkApp(App):
     TITLE = "LetsWork"
@@ -226,7 +223,7 @@ class LetsWorkApp(App):
         if viewer.edit_mode:
             activity.write(f"[bold]✏️  Editing {viewer.current_file} — press [S] to submit, [Escape] to cancel[/bold]")
         else:
-            activity.write(f"[dim]Exited edit mode[/dim]")
+            activity.write("[dim]Exited edit mode[/dim]")
 
     def action_submit_change(self) -> None:
         """Submit the edited content directly to disk."""

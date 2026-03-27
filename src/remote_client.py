@@ -9,7 +9,7 @@ class RemoteClient:
     def __init__(self, mcp_url: str, token: str):
         self.mcp_url = mcp_url.rstrip("/")
         self.token = token
-        self.session_id = None
+        self.session_id: str | None = None
 
     def _call_mcp(self, method: str, params: dict = None) -> dict:
         payload = {
@@ -45,7 +45,7 @@ class RemoteClient:
     def initialize(self) -> bool:
         try:
             self._call_mcp("initialize", {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2025-06-18",
                 "capabilities": {},
                 "clientInfo": {"name": "letswork-guest", "version": "1.0"}
             })

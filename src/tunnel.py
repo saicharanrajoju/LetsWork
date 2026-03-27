@@ -1,6 +1,5 @@
 import subprocess
 import shutil
-import time
 import re
 
 

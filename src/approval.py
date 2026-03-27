@@ -51,8 +51,14 @@ class ApprovalQueue:
             return False
             
         change = self._pending[change_id]
-        abs_path = os.path.join(self.project_root, change.path)
-        
+        abs_root = os.path.abspath(self.project_root)
+        abs_path = os.path.abspath(os.path.join(self.project_root, change.path))
+        if not abs_path.startswith(abs_root + os.sep) and abs_path != abs_root:
+            change.status = ApprovalStatus.REJECTED
+            self._history.append(change)
+            del self._pending[change_id]
+            return False
+
         dirname = os.path.dirname(abs_path)
         if dirname:
             os.makedirs(dirname, exist_ok=True)

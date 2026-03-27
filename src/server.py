@@ -3,7 +3,7 @@ from mcp.server.fastmcp import FastMCP
 from src.filelock import LockManager
 from src.auth import validate_token
 from src.events import EventLog, EventType
-from src.approval import ApprovalQueue, PendingChange
+from src.approval import ApprovalQueue
 
 app = FastMCP("letswork")
 lock_manager = LockManager()
@@ -11,13 +11,22 @@ event_log = EventLog()
 approval_queue: ApprovalQueue | None = None
 session_token: str = ""
 project_root: str = ""
+token_to_user: dict[str, str] = {}
 
 
 def check_auth(provided_token: str) -> bool:
-    """Validates a provided token against the session token. Raises an error if invalid."""
-    if not validate_token(provided_token, session_token):
-        raise ValueError("Unauthorized: invalid token")
-    return True
+    """Validates a provided token against the session token. Returns False if invalid."""
+    return validate_token(provided_token, session_token)
+
+
+def register_user(token: str, user_id: str) -> None:
+    """Associate a token with a user_id."""
+    token_to_user[token] = user_id
+
+
+def get_user(token: str) -> str:
+    """Resolve a token to its user_id. Returns 'unknown' if not registered."""
+    return token_to_user.get(token, "unknown")
 
 
 def safe_resolve(path: str, root: str) -> str:
@@ -28,7 +37,9 @@ def safe_resolve(path: str, root: str) -> str:
     return resolved
 
 @app.tool()
-def list_files(path: str = ".") -> str:
+def list_files(token: str, path: str = ".") -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
     resolved_path = safe_resolve(path, project_root)
     event_log.emit(EventType.FILE_TREE_REQUEST, "host", {"path": path})
         
@@ -59,7 +70,9 @@ def list_files(path: str = ".") -> str:
 
 
 @app.tool()
-def read_file(path: str) -> str:
+def read_file(token: str, path: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
     resolved_path = safe_resolve(path, project_root)
     event_log.emit(EventType.FILE_READ, "host", {"path": path})
         
@@ -80,10 +93,13 @@ def read_file(path: str) -> str:
 
 
 @app.tool()
-def write_file(path: str, content: str, user_id: str) -> str:
+def write_file(token: str, path: str, content: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
+    user_id = get_user(token)
     resolved_path = safe_resolve(path, project_root)
     relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
-    
+
     is_locked, holder = lock_manager.is_locked(relative_path)
     if is_locked and holder != user_id:
         raise ValueError(f"File is locked by {holder}. Cannot write.")
@@ -100,18 +116,20 @@ def write_file(path: str, content: str, user_id: str) -> str:
         return f"Change submitted for approval (ID: {change.id}). Waiting for host to approve."
     else:
         # No approval queue (standalone mode) — write directly
-        abs_path = safe_resolve(path, project_root)
-        parent = os.path.dirname(abs_path)
+        parent = os.path.dirname(resolved_path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        with open(abs_path, "w", encoding="utf-8") as f:
+        with open(resolved_path, "w", encoding="utf-8") as f:
             f.write(content)
         event_log.emit(EventType.FILE_WRITE, user_id, {"path": path})
         return f"Successfully wrote to {path} (locked by {user_id})"
 
 
 @app.tool()
-def lock_file(path: str, user_id: str) -> str:
+def lock_file(token: str, path: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
+    user_id = get_user(token)
     resolved_path = safe_resolve(path, project_root)
     relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
     
@@ -128,7 +146,10 @@ def lock_file(path: str, user_id: str) -> str:
 
 
 @app.tool()
-def unlock_file(path: str, user_id: str) -> str:
+def unlock_file(token: str, path: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
+    user_id = get_user(token)
     resolved_path = safe_resolve(path, project_root)
     relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
     
@@ -140,7 +161,9 @@ def unlock_file(path: str, user_id: str) -> str:
 
 
 @app.tool()
-def get_status() -> str:
+def get_status(token: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
     status_lines = []
     status_lines.append(f"Project root: {project_root}")
     
@@ -156,7 +179,10 @@ def get_status() -> str:
 
 
 @app.tool()
-def send_message(user_id: str, message: str) -> str:
+def send_message(token: str, message: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
+    user_id = get_user(token)
     if not message.strip():
         raise ValueError("Message cannot be empty")
     event_log.emit(EventType.CHAT_MESSAGE, user_id, {"message": message})
@@ -164,8 +190,9 @@ def send_message(user_id: str, message: str) -> str:
 
 
 @app.tool()
-def get_events(since_index: int = 0) -> str:
-    events = event_log.get_recent(count=200)
+def get_events(token: str, since_index: int = 0) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
     if since_index >= len(event_log._events):
         return "no_new_events"
     
@@ -179,7 +206,9 @@ def get_events(since_index: int = 0) -> str:
 
 
 @app.tool()
-def get_pending_changes() -> str:
+def get_pending_changes(token: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
     if approval_queue is None:
         return "No approval system active"
         
@@ -197,7 +226,9 @@ def get_pending_changes() -> str:
 
 
 @app.tool()
-def approve_change(change_id: str) -> str:
+def approve_change(token: str, change_id: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
     if approval_queue is None:
         raise ValueError("Approval system not active")
     if not approval_queue.approve(change_id):
@@ -206,7 +237,9 @@ def approve_change(change_id: str) -> str:
 
 
 @app.tool()
-def reject_change(change_id: str) -> str:
+def reject_change(token: str, change_id: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
     if approval_queue is None:
         raise ValueError("Approval system not active")
     if not approval_queue.reject(change_id):
