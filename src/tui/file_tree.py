@@ -2,9 +2,10 @@ import os
 from textual.widgets import Tree
 
 class FileTreeWidget(Tree):
-    def __init__(self, project_root: str, lock_manager, **kwargs):
+    def __init__(self, project_root: str, lock_manager, remote_client=None, **kwargs):
         self.project_root = project_root
         self.lock_manager = lock_manager
+        self.remote_client = remote_client
         super().__init__("📁 Project", **kwargs)
 
     def on_mount(self) -> None:
@@ -12,7 +13,64 @@ class FileTreeWidget(Tree):
 
     def build_tree(self) -> None:
         self.root.remove_children()
-        self._add_directory(self.root, self.project_root, "")
+        if self.remote_client is not None:
+            self._build_remote_tree()
+        else:
+            self._add_directory(self.root, self.project_root, "")
+
+    def _parse_listing_line(self, line: str) -> tuple[str, bool, str | None]:
+        """Parse one line from list_files output.
+        Returns (path, is_dir, lock_holder_or_None)"""
+        line = line.strip()
+        if line.startswith("[dir] "):
+            path = line[6:].strip()
+            return (path, True, None)
+        if line.startswith("[file] "):
+            rest = line[7:].strip()
+            if " [locked by " in rest:
+                parts = rest.split(" [locked by ", 1)
+                path = parts[0]
+                holder = parts[1].rstrip("]")
+                return (path, False, holder)
+            return (rest, False, None)
+        return ("", False, None)
+
+    def _build_remote_tree(self) -> None:
+        listing = self.remote_client.list_files(".")
+        if not listing or listing.startswith("Error") or listing == "Directory is empty":
+            self.root.add_leaf("(empty or error)")
+            return
+        self._populate_node(self.root, listing)
+
+    def _populate_node(self, node, listing: str) -> None:
+        dirs_list = []
+        files_list = []
+
+        for line in listing.splitlines():
+            path, is_dir, holder = self._parse_listing_line(line)
+            if not path:
+                continue
+            name = path.split("/")[-1] if "/" in path else path.split("\\")[-1] if "\\" in path else path
+            if is_dir:
+                dirs_list.append((name, path))
+            else:
+                files_list.append((name, path, holder))
+
+        dirs_list.sort(key=lambda x: x[0].lower())
+        files_list.sort(key=lambda x: x[0].lower())
+
+        for dir_name, full_rel_path in dirs_list:
+            dir_node = node.add(f"📁 {dir_name}", data={"path": full_rel_path, "is_dir": True})
+            sub_listing = self.remote_client.list_files(full_rel_path)
+            if sub_listing and not sub_listing.startswith("Error") and sub_listing != "Directory is empty":
+                self._populate_node(dir_node, sub_listing)
+
+        for file_name, full_rel_path, holder in files_list:
+            if holder:
+                label = f"📄 {file_name} 🔒 {holder}"
+            else:
+                label = f"📄 {file_name}"
+            node.add_leaf(label, data={"path": full_rel_path, "is_dir": False})
 
     def _add_directory(self, parent_node, abs_path: str, rel_path: str) -> None:
         try:

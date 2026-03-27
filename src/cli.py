@@ -88,6 +88,8 @@ def start(port):
 @click.option("--user", default="guest", help="Your username")
 def join(url, token, user):
     """Join a LetsWork session as a guest."""
+    if not url.endswith("/mcp"):
+        url = url.rstrip("/") + "/mcp"
     from src.events import EventLog
     from src.filelock import LockManager
     from src.tui.app import LetsWorkApp

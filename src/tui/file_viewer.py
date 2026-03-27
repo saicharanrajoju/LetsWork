@@ -5,8 +5,9 @@ from textual.app import ComposeResult
 from rich.syntax import Syntax
 
 class FileViewerWidget(Vertical):
-    def __init__(self, **kwargs):
+    def __init__(self, remote_client=None, **kwargs):
         super().__init__(**kwargs)
+        self.remote_client = remote_client
         self.current_file = ""
         self.project_root = ""
         self.edit_mode = False
@@ -22,6 +23,23 @@ class FileViewerWidget(Vertical):
 
     def load_file(self, file_path: str, project_root: str) -> None:
         self.project_root = project_root
+        self.current_file = file_path
+        if self.remote_client is not None:
+            contents = self.remote_client.read_file(file_path)
+            if contents.startswith("Error"):
+                display = self.query_one("#viewer-display", Static)
+                display.update(f"📄 {contents}")
+                return
+            self._current_content = contents
+            language = self._get_language(file_path)
+            syntax = Syntax(contents, language, theme="monokai", line_numbers=True, word_wrap=True)
+            display = self.query_one("#viewer-display", Static)
+            display.update(syntax)
+            display.styles.height = "auto"
+            if self.edit_mode:
+                editor = self.query_one("#viewer-editor", TextArea)
+                editor.text = contents
+            return
         abs_path = os.path.join(project_root, file_path)
         if not os.path.isfile(abs_path):
             display = self.query_one("#viewer-display", Static)
@@ -51,6 +69,14 @@ class FileViewerWidget(Vertical):
         except Exception as e:
             display = self.query_one("#viewer-display", Static)
             display.update(f"📄 Error: {e}")
+
+    def submit_remote(self) -> str:
+        """Submit edited content via remote MCP. Returns server response."""
+        if not self.remote_client or not self.current_file:
+            return "Error: no remote client or no file selected"
+        content = self.get_editor_content()
+        result = self.remote_client.write_file(self.current_file, content)
+        return result
 
     def toggle_edit(self) -> None:
         if not self.current_file:

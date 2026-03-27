@@ -1,89 +1,104 @@
-import requests
-import json
-import uuid
-
+import asyncio
+import threading
+from mcp.client.streamable_http import streamablehttp_client
+from mcp import ClientSession
 
 class RemoteClient:
-    """Calls LetsWork MCP tools over HTTP. Guest TUI uses this instead of local file access."""
-
+    """
+    Connects to Host MCP server over streamable-http, 
+    exposes sync methods for TUI widgets.
+    """
     def __init__(self, mcp_url: str, token: str):
-        self.mcp_url = mcp_url.rstrip("/")
+        self.mcp_url = mcp_url
         self.token = token
-        self.session_id: str | None = None
-
-    def _call_mcp(self, method: str, params: dict = None) -> dict:
-        payload = {
-            "jsonrpc": "2.0",
-            "id": str(uuid.uuid4()),
-            "method": method,
-            "params": params or {}
-        }
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-        }
-        if self.session_id:
-            headers["Mcp-Session-Id"] = self.session_id
-        try:
-            response = requests.post(self.mcp_url, json=payload, headers=headers, timeout=15)
-            if "Mcp-Session-Id" in response.headers:
-                self.session_id = response.headers["Mcp-Session-Id"]
-            content_type = response.headers.get("Content-Type", "")
-            if "text/event-stream" in content_type:
-                # Parse the last "data:" line as JSON
-                last_data = None
-                for line in response.text.splitlines():
-                    if line.startswith("data:"):
-                        last_data = line[len("data:"):].strip()
-                if last_data:
-                    return json.loads(last_data)
-                return {}
-            return response.json()
-        except Exception:
-            return {}
-
-    def initialize(self) -> bool:
-        try:
-            self._call_mcp("initialize", {
-                "protocolVersion": "2025-06-18",
-                "capabilities": {},
-                "clientInfo": {"name": "letswork-guest", "version": "1.0"}
-            })
-            self._call_mcp("notifications/initialized", {})
-            return True
-        except Exception:
-            return False
-
-    def call_tool(self, tool_name: str, arguments: dict = None) -> str:
-        try:
-            result = self._call_mcp("tools/call", {"name": tool_name, "arguments": arguments or {}})
+        self._session: ClientSession | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+        self._connected = False
+        self._read_stream = None
+        self._write_stream = None
+        self._cm_exit = None
+        
+    def connect(self) -> bool:
+        loop = asyncio.new_event_loop()
+        self._loop = loop
+        ready_event = threading.Event()
+        error_event = threading.Event()
+        
+        async def _run_loop():
             try:
-                return result["result"]["content"][0]["text"]
-            except (KeyError, IndexError, TypeError):
-                return str(result)
-        except requests.RequestException:
-            return "Error: connection failed"
+                async with streamablehttp_client(self.mcp_url) as (read, write, _session_id):
+                    self._read_stream = read
+                    self._write_stream = write
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        self._session = session
+                        self._connected = True
+                        ready_event.set()
+                        while self._connected:
+                            await asyncio.sleep(0.1)
+            except Exception as e:
+                self._connected = False
+                error_event.set()
+                
+        def thread_target():
+            loop.run_until_complete(_run_loop())
+            
+        self._thread = threading.Thread(target=thread_target, daemon=True)
+        self._thread.start()
+        
+        ready_event.wait(timeout=10)
+        if error_event.is_set() or not ready_event.is_set():
+            return False
+        return True
+
+    def disconnect(self):
+        self._connected = False
+        if self._thread:
+            self._thread.join(timeout=5)
+        self._session = None
+        self._loop = None
+
+    def _run_async(self, coro) -> any:
+        if not self._connected or self._loop is None:
+            raise RuntimeError("Not connected")
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result(timeout=15)
+
+    def _call_tool(self, tool_name: str, arguments: dict) -> str:
+        if not self._connected or self._session is None:
+            return "Error: not connected"
+        try:
+            result = self._run_async(
+                self._session.call_tool(tool_name, arguments)
+            )
+            for item in result.content:
+                if item.type == "text":
+                    return item.text
+            return str(result)
+        except Exception as e:
+            return f"Error: {e}"
 
     def list_files(self, path: str = ".") -> str:
-        return self.call_tool("list_files", {"path": path})
+        return self._call_tool("list_files", {"token": self.token, "path": path})
 
     def read_file(self, path: str) -> str:
-        return self.call_tool("read_file", {"path": path})
+        return self._call_tool("read_file", {"token": self.token, "path": path})
 
-    def write_file(self, path: str, content: str, user_id: str) -> str:
-        return self.call_tool("write_file", {"path": path, "content": content, "user_id": user_id})
+    def write_file(self, path: str, content: str) -> str:
+        return self._call_tool("write_file", {"token": self.token, "path": path, "content": content})
 
-    def lock_file(self, path: str, user_id: str) -> str:
-        return self.call_tool("lock_file", {"path": path, "user_id": user_id})
+    def lock_file(self, path: str) -> str:
+        return self._call_tool("lock_file", {"token": self.token, "path": path})
 
-    def unlock_file(self, path: str, user_id: str) -> str:
-        return self.call_tool("unlock_file", {"path": path, "user_id": user_id})
+    def unlock_file(self, path: str) -> str:
+        return self._call_tool("unlock_file", {"token": self.token, "path": path})
 
-    def send_message(self, user_id: str, message: str) -> str:
-        return self.call_tool("send_message", {"user_id": user_id, "message": message})
+    def send_message(self, message: str) -> str:
+        return self._call_tool("send_message", {"token": self.token, "message": message})
 
     def get_events(self, since_index: int = 0) -> str:
-        return self.call_tool("get_events", {"since_index": since_index})
+        return self._call_tool("get_events", {"token": self.token, "since_index": since_index})
 
     def get_status(self) -> str:
-        return self.call_tool("get_status", {})
+        return self._call_tool("get_status", {"token": self.token})

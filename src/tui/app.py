@@ -9,6 +9,7 @@ from src.filelock import LockManager
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.widgets import Header, Footer, RichLog
+from src.remote_client import RemoteClient
 
 class LetsWorkApp(App):
     TITLE = "LetsWork"
@@ -80,14 +81,18 @@ class LetsWorkApp(App):
         self.mcp_url = mcp_url
         self.mcp_token = mcp_token
         self.user_id = user_id
+        self.remote_client: RemoteClient | None = None
+        if self.guest_mode and self.mcp_url and self.mcp_token:
+            self.remote_client = RemoteClient(self.mcp_url, self.mcp_token)
         self._last_event_count = 0
         self._file_mtimes: dict[str, float] = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Container(id="main-container"):
-            yield FileTreeWidget(self.project_root, self.lock_manager, id="file-tree-panel")
-            yield FileViewerWidget(id="file-viewer-panel")
+            yield FileTreeWidget(self.project_root, self.lock_manager,
+                                 remote_client=self.remote_client, id="file-tree-panel")
+            yield FileViewerWidget(remote_client=self.remote_client, id="file-viewer-panel")
             yield RichLog(id="activity-panel", markup=True, highlight=True, wrap=True)
             yield ChatWidget(self.event_log, user_id=self.user_id, id="chat-panel")
             if self.approval_queue is not None:
@@ -95,6 +100,14 @@ class LetsWorkApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        if self.remote_client:
+            connected = self.remote_client.connect()
+            activity = self.query_one("#activity-panel", RichLog)
+            if connected:
+                activity.write("[bold green]✅ Connected to host[/bold green]")
+            else:
+                activity.write("[bold red]❌ Failed to connect to host[/bold red]")
+
         if self.guest_mode:
             self.add_class("guest-mode")
             self.sub_title = f"Guest: {self.user_id} — Connected to {self.mcp_url}"
@@ -111,6 +124,8 @@ class LetsWorkApp(App):
 
     def _poll_file_changes(self) -> None:
         """Watch for local file changes and update TUI."""
+        if self.guest_mode:
+            return
         try:
             # Check if currently viewed file has changed on disk
             viewer = self.query_one("#file-viewer-panel", FileViewerWidget)
@@ -166,6 +181,31 @@ class LetsWorkApp(App):
 
     def _poll_events(self) -> None:
         """Periodically check for new events from the MCP server thread."""
+        if self.guest_mode and self.remote_client:
+            try:
+                result = self.remote_client.get_events(self._last_event_count)
+                if result == "no_new_events" or result.startswith("Error"):
+                    return
+                lines = result.strip().split("\n")
+                activity = self.query_one("#activity-panel", RichLog)
+                for line in lines:
+                    if line.startswith("__INDEX__:"):
+                        try:
+                            self._last_event_count = int(line.split(":")[1])
+                        except (ValueError, IndexError):
+                            pass
+                    else:
+                        activity.write(line)
+                # Refresh file tree on new events
+                try:
+                    tree = self.query_one("#file-tree-panel", FileTreeWidget)
+                    tree.refresh_tree()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            return
+        # Original local event polling below — keep unchanged
         current_count = len(self.event_log._events)
         if current_count > self._last_event_count:
             new_events = self.event_log._events[self._last_event_count:current_count]
@@ -230,6 +270,15 @@ class LetsWorkApp(App):
         viewer = self.query_one("#file-viewer-panel", FileViewerWidget)
         if not viewer.edit_mode or not viewer.current_file:
             return
+        if self.guest_mode and self.remote_client:
+            result = viewer.submit_remote()
+            activity = self.query_one("#activity-panel", RichLog)
+            if "Error" in result:
+                activity.write(f"[bold red]❌ {result}[/bold red]")
+            else:
+                activity.write(f"[bold green]✅ {result}[/bold green]")
+            viewer.toggle_edit()
+            return
         new_content = viewer.get_editor_content()
         abs_path = os.path.join(self.project_root, viewer.current_file)
         try:
@@ -253,6 +302,8 @@ class LetsWorkApp(App):
             activity.write("[dim]Edit cancelled[/dim]")
 
     def action_quit(self) -> None:
+        if self.remote_client:
+            self.remote_client.disconnect()
         self.exit()
 
 if __name__ == "__main__":
