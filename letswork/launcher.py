@@ -41,33 +41,26 @@ def launch_with_claude_code(project_root: str, tunnel_url: str, token: str, port
 
 
 def launch_guest_claude_code(url: str, token: str) -> None:
-    print("[LetsWork] Configuring Claude Code for guest connection...")
-    result = subprocess.run(
-        ["claude", "mcp", "add", "letswork", "--transport", "http", url],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        print("[LetsWork] Warning: Could not auto-configure MCP. You may need to run manually:")
-        print(f"  claude mcp add letswork --transport http {url}")
+    import threading
 
-    print("[LetsWork] MCP server added. Opening Claude Code...")
-
-    if sys.platform == "darwin":
-        script = '''
-        tell application "Terminal"
-            do script "claude"
-        end tell
-        '''
-        subprocess.Popen(
-            ["osascript", "-e", script],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+    def _configure_and_open():
+        subprocess.run(
+            ["claude", "mcp", "add", "letswork", "--transport", "http", url],
+            check=False,
+            capture_output=True,
+            text=True,
         )
-    else:
-        print("[LetsWork] Auto-launch not supported on this OS.")
-        print("[LetsWork] Open a new terminal and run: claude")
+        if sys.platform == "darwin":
+            script = '''
+            tell application "Terminal"
+                do script "claude"
+            end tell
+            '''
+            subprocess.Popen(
+                ["osascript", "-e", script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
-    print("[LetsWork] Guest Claude Code is ready. Use MCP tools to collaborate.")
+    threading.Thread(target=_configure_and_open, daemon=True).start()
 
