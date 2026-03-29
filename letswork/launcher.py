@@ -57,7 +57,6 @@ def launch_guest_claude_code(url: str, token: str) -> None:
     if sys.platform == "darwin":
         script = '''
         tell application "Terminal"
-            activate
             do script "claude"
         end tell
         '''
