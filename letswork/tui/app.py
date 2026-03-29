@@ -94,18 +94,7 @@ class LetsWorkApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        if self.remote_client:
-            connected = self.remote_client.connect()
-            activity = self.query_one("#activity-panel", RichLog)
-            if connected:
-                activity.write("[bold green]✅ Connected to host[/bold green]")
-                try:
-                    tree = self.query_one("#file-tree-panel", FileTreeWidget)
-                    tree.refresh_tree()
-                except Exception:
-                    pass
-            else:
-                activity.write("[bold red]❌ Failed to connect to host[/bold red]")
+        import threading
 
         if self.guest_mode:
             self.add_class("guest-mode")
@@ -122,6 +111,27 @@ class LetsWorkApp(App):
         self._last_event_count = len(self.event_log._events)
         for past_event in self.event_log.get_recent():
             activity.write(past_event.message)
+
+        if self.remote_client:
+            activity.write("[dim]Connecting to host...[/dim]")
+            threading.Thread(target=self._connect_to_host, daemon=True).start()
+
+    def _connect_to_host(self) -> None:
+        connected = self.remote_client.connect()
+
+        def _update():
+            activity = self.query_one("#activity-panel", RichLog)
+            if connected:
+                activity.write("[bold green]✅ Connected to host[/bold green]")
+                try:
+                    tree = self.query_one("#file-tree-panel", FileTreeWidget)
+                    tree.refresh_tree()
+                except Exception:
+                    pass
+            else:
+                activity.write("[bold red]❌ Failed to connect to host[/bold red]")
+
+        self.call_from_thread(_update)
 
     def _poll_file_changes(self) -> None:
         """Watch for local file changes and update TUI."""
