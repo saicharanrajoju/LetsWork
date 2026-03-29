@@ -80,6 +80,7 @@ class LetsWorkApp(App):
             self.remote_client = RemoteClient(self.mcp_url, self.mcp_token)
         self._last_event_count = 0
         self._file_mtimes: dict[str, float] = {}
+        self._guest_poll_in_progress = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -125,7 +126,8 @@ class LetsWorkApp(App):
                 activity.write("[bold green]✅ Connected to host[/bold green]")
                 try:
                     tree = self.query_one("#file-tree-panel", FileTreeWidget)
-                    tree.refresh_tree()
+                    import threading
+                    threading.Thread(target=tree.refresh_tree, daemon=True).start()
                 except Exception:
                     pass
             else:
@@ -186,29 +188,11 @@ class LetsWorkApp(App):
     def _poll_events(self) -> None:
         """Periodically check for new events from the MCP server thread."""
         if self.guest_mode and self.remote_client:
-            try:
-                result = self.remote_client.get_events(self._last_event_count)
-                if result == "no_new_events" or result.startswith("Error"):
-                    return
-                lines = result.strip().split("\n")
-                activity = self.query_one("#activity-panel", RichLog)
-                for line in lines:
-                    if line.startswith("__INDEX__:"):
-                        try:
-                            self._last_event_count = int(line.split(":")[1])
-                        except (ValueError, IndexError):
-                            pass
-                    else:
-                        activity.write(line)
-                # Refresh file tree on new events
-                try:
-                    tree = self.query_one("#file-tree-panel", FileTreeWidget)
-                    tree.refresh_tree()
-                except Exception:
-                    pass
-            except Exception as e:
-                activity = self.query_one("#activity-panel", RichLog)
-                activity.write(Text(f"❌ Connection error: {e}", style="bold red"))
+            if self._guest_poll_in_progress:
+                return
+            self._guest_poll_in_progress = True
+            import threading
+            threading.Thread(target=self._fetch_guest_events, daemon=True).start()
             return
         # Original local event polling below — keep unchanged
         current_count = len(self.event_log._events)
@@ -249,6 +233,45 @@ class LetsWorkApp(App):
         else:
             base = f"Host — {self.project_root}"
         self.sub_title = base + lock_info
+
+    def _fetch_guest_events(self) -> None:
+        """Background thread: fetch events from MCP server, update UI safely."""
+        try:
+            result = self.remote_client.get_events(self._last_event_count)
+            if result == "no_new_events" or result.startswith("Error"):
+                return
+            lines = result.strip().split("\n")
+            new_index = self._last_event_count
+            display_lines = []
+            for line in lines:
+                if line.startswith("__INDEX__:"):
+                    try:
+                        new_index = int(line.split(":")[1])
+                    except (ValueError, IndexError):
+                        pass
+                else:
+                    display_lines.append(line)
+
+            def _update():
+                self._last_event_count = new_index
+                activity = self.query_one("#activity-panel", RichLog)
+                for line in display_lines:
+                    activity.write(line)
+                try:
+                    tree = self.query_one("#file-tree-panel", FileTreeWidget)
+                    import threading
+                    threading.Thread(target=tree.refresh_tree, daemon=True).start()
+                except Exception:
+                    pass
+
+            self.call_from_thread(_update)
+        except Exception as e:
+            def _update_error():
+                activity = self.query_one("#activity-panel", RichLog)
+                activity.write(Text(f"❌ Connection error: {e}", style="bold red"))
+            self.call_from_thread(_update_error)
+        finally:
+            self._guest_poll_in_progress = False
 
     def handle_event(self, event: Event) -> None:
         pass
