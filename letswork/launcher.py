@@ -43,24 +43,13 @@ def launch_with_claude_code(project_root: str, tunnel_url: str, token: str, port
 def launch_guest_claude_code(url: str, token: str) -> None:
     import threading
 
-    def _configure_and_open():
+    def _configure():
         subprocess.run(
             ["claude", "mcp", "add", "letswork", "--transport", "http", url],
             check=False,
             capture_output=True,
             text=True,
         )
-        if sys.platform == "darwin":
-            script = '''
-            tell application "Terminal"
-                do script "claude"
-            end tell
-            '''
-            subprocess.Popen(
-                ["osascript", "-e", script],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
 
-    threading.Thread(target=_configure_and_open, daemon=True).start()
+    threading.Thread(target=_configure, daemon=True).start()
 
