@@ -67,14 +67,22 @@ def start(port):
     # Start MCP server in a background thread
     def run_server():
         import logging as _logging
-        import uvicorn
-        # Override uvicorn's log config before any handlers are added
-        uvicorn.config.LOGGING_CONFIG["loggers"]["uvicorn.access"]["level"] = "CRITICAL"
-        uvicorn.config.LOGGING_CONFIG["loggers"]["uvicorn"]["level"] = "CRITICAL"
-        for _log_name in ("uvicorn", "uvicorn.access", "uvicorn.error", "uvicorn.asgi"):
-            _l = _logging.getLogger(_log_name)
-            _l.setLevel(_logging.CRITICAL)
-            _l.propagate = False
+        import uvicorn.config as _uvc
+
+        # Replace the entire logging config so uvicorn installs no console handlers
+        _uvc.LOGGING_CONFIG = {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "handlers": {
+                "null": {"class": "logging.NullHandler"},
+            },
+            "loggers": {
+                "uvicorn": {"handlers": ["null"], "level": "CRITICAL", "propagate": False},
+                "uvicorn.error": {"handlers": ["null"], "level": "CRITICAL", "propagate": False},
+                "uvicorn.access": {"handlers": ["null"], "level": "CRITICAL", "propagate": False},
+            },
+        }
+
         server_module.app.settings.host = "127.0.0.1"
         server_module.app.settings.port = port
         server_module.app.settings.stateless_http = True

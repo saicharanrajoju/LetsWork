@@ -27,15 +27,25 @@ class FileTreeWidget(Tree):
 
     def _background_refresh(self) -> None:
         """Fetch all remote data in background thread, then rebuild tree on main thread."""
+        error_msg = None
         try:
-            data = self._fetch_tree_data(".")
-        except Exception:
+            # Test the root listing directly first for diagnostics
+            raw = self.remote_client.list_files(".")
+            if not raw or raw.startswith("Error") or raw == "Directory is empty":
+                error_msg = f"list_files('.'): {repr(raw)}"
+                data = []
+            else:
+                data = self._fetch_tree_data(".")
+        except Exception as e:
+            error_msg = str(e)
             data = None
 
         def _rebuild():
             self.root.remove_children()
             if data is None:
-                self.root.add_leaf("(empty or error)")
+                self.root.add_leaf(f"(error: {error_msg})")
+            elif not data:
+                self.root.add_leaf(f"(empty — {error_msg or 'no files returned'})")
             else:
                 self._populate_from_data(self.root, data)
             self.root.expand()
