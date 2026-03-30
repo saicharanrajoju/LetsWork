@@ -33,10 +33,9 @@ class FileTreeWidget(Tree):
         """Fetch all remote data in background thread, then rebuild tree on main thread."""
         error_msg = None
         try:
-            # Test the root listing directly first for diagnostics
             raw = self.remote_client.list_files(".")
             if not raw or raw.startswith("Error") or raw == "Directory is empty":
-                error_msg = f"list_files('.'): {repr(raw)}"
+                error_msg = f"list_files err: {repr(raw[:80])}"
                 data = []
             else:
                 data = self._fetch_tree_data(".")
@@ -44,7 +43,17 @@ class FileTreeWidget(Tree):
             error_msg = str(e)
             data = None
 
+        data_count = len(data) if data is not None else -1
+
         def _rebuild():
+            # Write diagnostics to activity log
+            try:
+                from textual.widgets import RichLog
+                activity = self.app.query_one("#activity-panel", RichLog)
+                activity.write(f"[tree debug] items={data_count} err={error_msg}")
+            except Exception:
+                pass
+
             self.root.remove_children()
             if data is None:
                 self.root.add_leaf(f"(error: {error_msg})")
