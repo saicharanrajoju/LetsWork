@@ -87,6 +87,8 @@ class FileTreeWidget(Tree):
             if not p:
                 continue
             name = p.split("/")[-1] if "/" in p else p.split("\\")[-1] if "\\" in p else p
+            if self.should_ignore(name):
+                continue
             if is_dir:
                 dirs_list.append((name, p))
             else:
