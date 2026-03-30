@@ -3,6 +3,7 @@ import threading
 from rich.text import Text
 from textual.widgets import Tree
 
+
 class FileTreeWidget(Tree):
     def __init__(self, project_root: str, lock_manager, remote_client=None, **kwargs):
         self.project_root = project_root
@@ -12,11 +13,67 @@ class FileTreeWidget(Tree):
         super().__init__("📁 Project", **kwargs)
 
     def on_mount(self) -> None:
-        # Remote mode: don't refresh yet — connection hasn't been established.
-        # _connect_to_host in app.py will call refresh_tree() after connecting.
+        # Remote mode: wait for _connect_to_host to call refresh_tree()
         if self.remote_client is None:
             self._add_directory(self.root, self.project_root, "")
         self.root.expand()
+
+    def on_tree_node_expanded(self, event: Tree.NodeExpanded) -> None:
+        """Lazy-load directory contents when a node is expanded."""
+        node = event.node
+        if not (node.data and node.data.get("is_dir")):
+            return
+        if node.data.get("loaded"):
+            return
+        # Mark loading so we don't double-fetch
+        node.data["loaded"] = True
+        path = node.data["path"]
+        threading.Thread(
+            target=self._load_directory, args=(node, path), daemon=True
+        ).start()
+
+    def _load_directory(self, node, path: str) -> None:
+        """Fetch one directory level in background, populate node on main thread."""
+        listing = self.remote_client.list_files(path)
+
+        dirs_list = []
+        files_list = []
+        if listing and not listing.startswith("Error") and listing != "Directory is empty":
+            for line in listing.splitlines():
+                p, is_dir, holder = self._parse_listing_line(line)
+                if not p:
+                    continue
+                name = p.split("/")[-1] if "/" in p else p.split("\\")[-1] if "\\" in p else p
+                if self.should_ignore(name):
+                    continue
+                if is_dir:
+                    dirs_list.append((name, p))
+                else:
+                    files_list.append((name, p, holder))
+
+        dirs_list.sort(key=lambda x: x[0].lower())
+        files_list.sort(key=lambda x: x[0].lower())
+
+        def _populate():
+            # Remove the "(loading...)" placeholder
+            node.remove_children()
+            for dir_name, full_rel_path in dirs_list:
+                child = node.add(
+                    Text(f"📁 {dir_name}", style="bold cyan"),
+                    data={"path": full_rel_path, "is_dir": True, "loaded": False},
+                )
+                # Add placeholder so the node shows as expandable
+                child.add_leaf(Text("  (loading...)", style="dim"))
+            for file_name, full_rel_path, holder in files_list:
+                if holder:
+                    label = Text(f"  {file_name} 🔒 {holder}", style="bold red")
+                else:
+                    label = Text(f"  {file_name}", style="white")
+                node.add_leaf(label, data={"path": full_rel_path, "is_dir": False})
+            if not dirs_list and not files_list:
+                node.add_leaf(Text("  (empty)", style="dim"))
+
+        self.call_from_thread(_populate)
 
     def refresh_tree(self) -> None:
         if self.remote_client is not None:
@@ -30,95 +87,52 @@ class FileTreeWidget(Tree):
             self.root.expand()
 
     def _background_refresh(self) -> None:
-        """Fetch all remote data in background thread, then rebuild tree on main thread."""
-        import time
-        def _dbg(msg):
-            with open("/tmp/lw_debug.txt", "a") as f:
-                f.write(f"[{time.strftime('%H:%M:%S')}] [tree] {msg}\n")
-
-        _dbg("_background_refresh started")
+        """Fetch root level only. Subdirectories load lazily on expand."""
+        listing = self.remote_client.list_files(".")
+        dirs_list = []
+        files_list = []
         error_msg = None
-        try:
-            raw = self.remote_client.list_files(".")
-            _dbg(f"list_files('.') returned: {repr(raw[:120]) if raw else repr(raw)}")
-            if not raw or raw.startswith("Error") or raw == "Directory is empty":
-                error_msg = f"list_files err: {repr(raw[:80])}"
-                data = []
-            else:
-                data = self._fetch_tree_data(".")
-        except Exception as e:
-            error_msg = str(e)
-            data = None
 
-        data_count = len(data) if data is not None else -1
+        if not listing or listing.startswith("Error") or listing == "Directory is empty":
+            error_msg = repr(listing[:80]) if listing else "empty response"
+        else:
+            for line in listing.splitlines():
+                p, is_dir, holder = self._parse_listing_line(line)
+                if not p:
+                    continue
+                name = p.split("/")[-1] if "/" in p else p.split("\\")[-1] if "\\" in p else p
+                if self.should_ignore(name):
+                    continue
+                if is_dir:
+                    dirs_list.append((name, p))
+                else:
+                    files_list.append((name, p, holder))
+
+            dirs_list.sort(key=lambda x: x[0].lower())
+            files_list.sort(key=lambda x: x[0].lower())
 
         def _rebuild():
-            _dbg(f"_rebuild called: data_count={data_count} err={error_msg}")
-            # Write diagnostics to activity log
-            try:
-                from textual.widgets import RichLog
-                activity = self.app.query_one("#activity-panel", RichLog)
-                activity.write(f"[tree debug] items={data_count} err={error_msg}")
-            except Exception:
-                pass
-
             self.root.remove_children()
-            if data is None:
+            if error_msg:
                 self.root.add_leaf(f"(error: {error_msg})")
-            elif not data:
-                self.root.add_leaf(f"(empty — {error_msg or 'no files returned'})")
             else:
-                self._populate_from_data(self.root, data)
+                for dir_name, full_rel_path in dirs_list:
+                    child = self.root.add(
+                        Text(f"📁 {dir_name}", style="bold cyan"),
+                        data={"path": full_rel_path, "is_dir": True, "loaded": False},
+                    )
+                    # Placeholder makes the node show as expandable
+                    child.add_leaf(Text("  (loading...)", style="dim"))
+                for file_name, full_rel_path, holder in files_list:
+                    if holder:
+                        label = Text(f"  {file_name} 🔒 {holder}", style="bold red")
+                    else:
+                        label = Text(f"  {file_name}", style="white")
+                    self.root.add_leaf(label, data={"path": full_rel_path, "is_dir": False})
             self.root.expand()
             self._refresh_in_progress = False
 
         self.call_from_thread(_rebuild)
-
-    def _fetch_tree_data(self, path: str) -> list:
-        """Recursively fetch directory structure. Runs in background thread."""
-        listing = self.remote_client.list_files(path)
-        if not listing or listing.startswith("Error") or listing == "Directory is empty":
-            return []
-
-        dirs_list = []
-        files_list = []
-        for line in listing.splitlines():
-            p, is_dir, holder = self._parse_listing_line(line)
-            if not p:
-                continue
-            name = p.split("/")[-1] if "/" in p else p.split("\\")[-1] if "\\" in p else p
-            if self.should_ignore(name):
-                continue
-            if is_dir:
-                dirs_list.append((name, p))
-            else:
-                files_list.append((name, p, holder))
-
-        dirs_list.sort(key=lambda x: x[0].lower())
-        files_list.sort(key=lambda x: x[0].lower())
-
-        result = []
-        for dir_name, full_rel_path in dirs_list:
-            children = self._fetch_tree_data(full_rel_path)
-            result.append({"name": dir_name, "path": full_rel_path, "is_dir": True, "children": children})
-        for file_name, full_rel_path, holder in files_list:
-            result.append({"name": file_name, "path": full_rel_path, "is_dir": False, "holder": holder})
-        return result
-
-    def _populate_from_data(self, node, items: list) -> None:
-        """Build tree nodes from pre-fetched data. Must run on main thread."""
-        for item in items:
-            if item["is_dir"]:
-                dir_node = node.add(Text(f"📁 {item['name']}", style="bold cyan"),
-                                    data={"path": item["path"], "is_dir": True})
-                self._populate_from_data(dir_node, item["children"])
-            else:
-                holder = item.get("holder")
-                if holder:
-                    label = Text(f"  {item['name']} 🔒 {holder}", style="bold red")
-                else:
-                    label = Text(f"  {item['name']}", style="white")
-                node.add_leaf(label, data={"path": item["path"], "is_dir": False})
 
     def _parse_listing_line(self, line: str) -> tuple[str, bool, str | None]:
         line = line.strip()
