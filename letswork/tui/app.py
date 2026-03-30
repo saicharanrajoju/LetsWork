@@ -126,8 +126,11 @@ class LetsWorkApp(App):
                 activity.write("[bold green]✅ Connected to host[/bold green]")
                 try:
                     tree = self.query_one("#file-tree-panel", FileTreeWidget)
-                    import threading
-                    threading.Thread(target=tree.refresh_tree, daemon=True).start()
+                    # Force-reset the flag (on_mount may have set it before connection)
+                    # and call refresh_tree directly on the main thread — it only
+                    # spawns a background worker so this is safe.
+                    tree._refresh_in_progress = False
+                    tree.refresh_tree()
                 except Exception:
                     pass
             else:

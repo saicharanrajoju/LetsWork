@@ -12,7 +12,11 @@ class FileTreeWidget(Tree):
         super().__init__("📁 Project", **kwargs)
 
     def on_mount(self) -> None:
-        self.refresh_tree()
+        # Remote mode: don't refresh yet — connection hasn't been established.
+        # _connect_to_host in app.py will call refresh_tree() after connecting.
+        if self.remote_client is None:
+            self._add_directory(self.root, self.project_root, "")
+        self.root.expand()
 
     def refresh_tree(self) -> None:
         if self.remote_client is not None:
