@@ -31,9 +31,16 @@ class FileTreeWidget(Tree):
 
     def _background_refresh(self) -> None:
         """Fetch all remote data in background thread, then rebuild tree on main thread."""
+        import time
+        def _dbg(msg):
+            with open("/tmp/lw_debug.txt", "a") as f:
+                f.write(f"[{time.strftime('%H:%M:%S')}] [tree] {msg}\n")
+
+        _dbg("_background_refresh started")
         error_msg = None
         try:
             raw = self.remote_client.list_files(".")
+            _dbg(f"list_files('.') returned: {repr(raw[:120]) if raw else repr(raw)}")
             if not raw or raw.startswith("Error") or raw == "Directory is empty":
                 error_msg = f"list_files err: {repr(raw[:80])}"
                 data = []
@@ -46,6 +53,7 @@ class FileTreeWidget(Tree):
         data_count = len(data) if data is not None else -1
 
         def _rebuild():
+            _dbg(f"_rebuild called: data_count={data_count} err={error_msg}")
             # Write diagnostics to activity log
             try:
                 from textual.widgets import RichLog

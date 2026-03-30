@@ -118,9 +118,17 @@ class LetsWorkApp(App):
             threading.Thread(target=self._connect_to_host, daemon=True).start()
 
     def _connect_to_host(self) -> None:
+        import time
+        def _dbg(msg):
+            with open("/tmp/lw_debug.txt", "a") as f:
+                f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+
+        _dbg("_connect_to_host started")
         connected = self.remote_client.connect()
+        _dbg(f"remote_client.connect() returned {connected}")
 
         def _update():
+            _dbg("_update called on main thread")
             activity = self.query_one("#activity-panel", RichLog)
             if connected:
                 activity.write("[bold green]✅ Connected to host[/bold green]")
