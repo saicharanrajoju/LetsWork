@@ -3,53 +3,74 @@ import shutil
 import sys
 
 
-def launch_with_claude_code(project_root: str, tunnel_url: str, token: str, port: int) -> None:
-    """Open a new Terminal tab with Claude Code, then launch TUI in current terminal."""
+def launch_claude_code(project_root: str, tunnel_url: str, token: str) -> None:
+    """Open a new Terminal window with Claude Code configured for LetsWork."""
+    if sys.platform != "darwin":
+        print("Open a new terminal and run: claude")
+        return
 
-    if sys.platform == "darwin":
-        # Mac: open new Terminal tab with Claude Code
-        claude_path = shutil.which("claude")
-        if claude_path:
-            apple_script = f'''
-            tell application "Terminal"
-                activate
-                do script "cd {project_root} && clear && echo '╔══════════════════════════════════════════════════╗' && echo '║  🤖 Claude Code — Connected to LetsWork          ║' && echo '║                                                  ║' && echo '║  MCP URL: {tunnel_url}/mcp' && echo '║  Token: {token}' && echo '║                                                  ║' && echo '║  Try: list_files, read_file, write_file           ║' && echo '╚══════════════════════════════════════════════════╝' && echo '' && claude"
-            end tell
-            '''
-            subprocess.Popen(["osascript", "-e", apple_script])
-        else:
-            print("⚠️  Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code")
-            print("   Open a second terminal and run: claude")
-    else:
-        # Linux/Windows: just print instructions
-        print("Open a second terminal and run:")
-        print(f"  cd {project_root}")
-        print("  claude")
-        print("Claude Code will connect to your LetsWork MCP server automatically.")
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        print("⚠️  Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code")
+        return
 
-    # Launch TUI in current terminal
-    import letswork.server as server_module
-    from letswork.tui.app import LetsWorkApp
-
-    app = LetsWorkApp(
-        project_root=project_root,
-        lock_manager=server_module.lock_manager,
-        event_log=server_module.event_log,
-        approval_queue=server_module.approval_queue,
+    banner = (
+        f"clear && echo '╔══════════════════════════════════════════════════╗' && "
+        f"echo '║  🤖 Claude Code — Connected to LetsWork          ║' && "
+        f"echo '║                                                  ║' && "
+        f"echo '║  MCP URL: {tunnel_url}/mcp' && "
+        f"echo '║  Token: {token}' && "
+        f"echo '║                                                  ║' && "
+        f"echo '║  Try: list_files, read_file, write_file           ║' && "
+        f"echo '╚══════════════════════════════════════════════════╝' && "
+        f"echo '' && claude"
     )
-    app.run()
+    script = f'''
+    tell application "Terminal"
+        do script "cd {project_root} && {banner}"
+    end tell
+    '''
+    subprocess.Popen(["osascript", "-e", script])
 
 
-def launch_guest_claude_code(url: str, token: str) -> None:
+def register_guest_mcp(url: str) -> None:
+    """Register the LetsWork MCP server with the guest's Claude Code."""
     import threading
 
     def _configure():
         subprocess.run(
             ["claude", "mcp", "add", "letswork", "--transport", "http", url],
-            check=False,
-            capture_output=True,
-            text=True,
+            check=False, capture_output=True, text=True,
         )
 
     threading.Thread(target=_configure, daemon=True).start()
 
+
+def launch_guest_claude_code(project_root: str, url: str, token: str) -> None:
+    """Open a new Terminal window with Claude Code for the guest."""
+    if sys.platform != "darwin":
+        print("Open a new terminal and run: claude")
+        return
+
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        print("⚠️  Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code")
+        return
+
+    banner = (
+        f"clear && echo '╔══════════════════════════════════════════════════╗' && "
+        f"echo '║  🤖 Claude Code — Connected to LetsWork          ║' && "
+        f"echo '║                                                  ║' && "
+        f"echo '║  MCP URL: {url}' && "
+        f"echo '║  Token: {token}' && "
+        f"echo '║                                                  ║' && "
+        f"echo '║  Try: list_files, read_file, write_file           ║' && "
+        f"echo '╚══════════════════════════════════════════════════╝' && "
+        f"echo '' && claude"
+    )
+    script = f'''
+    tell application "Terminal"
+        do script "cd {project_root} && {banner}"
+    end tell
+    '''
+    subprocess.Popen(["osascript", "-e", script])
