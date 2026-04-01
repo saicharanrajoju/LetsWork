@@ -1,3 +1,4 @@
+import shlex
 import subprocess
 import shutil
 import sys
@@ -9,7 +10,7 @@ def _open_terminal(command: str, project_root: str) -> bool:
     Returns True if a terminal was launched, False if we fell back to printing.
     """
     if sys.platform == "darwin":
-        script = f'tell application "Terminal" to do script "cd {project_root} && {command}"'
+        script = f'tell application "Terminal" to do script "cd {shlex.quote(project_root)} && {command}"'
         subprocess.Popen(["osascript", "-e", script])
         return True
 
@@ -102,3 +103,24 @@ def launch_guest_claude_code(project_root: str, url: str, token: str) -> None:
     launched = _open_terminal(_make_banner(url, token), project_root)
     if not launched:
         print("Open a new terminal, cd to your project, and run: claude")
+
+
+def launch_chat_window(url: str, token: str, role: str, name: str, project_root: str) -> None:
+    """Open a new terminal window running the LetsWork chat window."""
+    args = (
+        f" --url {shlex.quote(url)}"
+        f" --token {shlex.quote(token)}"
+        f" --role {role}"
+        f" --name {shlex.quote(name)}"
+    )
+    # Prefer the installed script (resolves correctly when venv is active).
+    # Fall back to the Python that's running this process.
+    chat_bin = shutil.which("letswork-chat")
+    if chat_bin:
+        cmd = shlex.quote(chat_bin) + args
+    else:
+        python = shlex.quote(sys.executable)
+        cmd = f"{python} -m letswork.tui.chat_app{args}"
+    launched = _open_terminal(cmd, project_root)
+    if not launched:
+        print(f"Run in a new terminal: {cmd}")

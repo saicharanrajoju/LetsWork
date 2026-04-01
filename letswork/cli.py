@@ -19,14 +19,17 @@ def start(port):
     """Start a LetsWork collaboration session."""
     from letswork.events import EventLog
     from letswork.approval import ApprovalQueue
-    from letswork.launcher import launch_claude_code, register_guest_mcp
+    from letswork.launcher import launch_claude_code, launch_chat_window, register_guest_mcp
+
+    name = click.prompt("What's your name?")
 
     project_root = os.getcwd()
     server_module.project_root = project_root
 
-    token = generate_token()
-    server_module.session_token = token
-    server_module.register_user(token, "host")
+    host_token = generate_token()
+    guest_token = generate_token()
+    server_module.register_user(host_token, "host")
+    server_module.register_user(guest_token, "guest")
 
     server_module.event_log = EventLog()
     server_module.approval_queue = ApprovalQueue(project_root)
@@ -83,19 +86,22 @@ def start(port):
         except Exception:
             time.sleep(0.5)
 
-    # Register letswork MCP for the host too (needed for approvals)
-    register_guest_mcp(mcp_url, token)
+    # Register letswork MCP for the host (needed for approvals)
+    register_guest_mcp(mcp_url, host_token)
 
     # Open Claude Code in a new Terminal window
-    launch_claude_code(project_root, url, token)
+    launch_claude_code(project_root, url, host_token)
 
-    # Print session info and keep server alive
+    # Open chat window in a separate terminal (uses local URL for reliability)
+    launch_chat_window(f"http://127.0.0.1:{port}/mcp", host_token, "host", name, project_root)
+
+    # Print session info — share guest_token with collaborator
     click.echo("")
     click.echo("╔══════════════════════════════════════════════════╗")
-    click.echo("║  🤖 LetsWork Session Active                      ║")
+    click.echo("║  🤝 LetsWork Session Active                      ║")
     click.echo("║                                                  ║")
     click.echo(f"║  MCP URL: {mcp_url}")
-    click.echo(f"║  Token:   {token}")
+    click.echo(f"║  Token:   {guest_token}")
     click.echo("║                                                  ║")
     click.echo("║  Share the URL + Token with your collaborator.   ║")
     click.echo("║  Press Ctrl+C to stop the session.               ║")
@@ -115,21 +121,25 @@ def start(port):
 @cli.command()
 @click.argument("url")
 @click.option("--token", prompt="Enter session token", help="Secret token from the host")
-@click.option("--user", default="guest", help="Your username")
-def join(url, token, user):
+def join(url, token):
     """Join a LetsWork session as a guest."""
-    from letswork.launcher import register_guest_mcp, launch_guest_claude_code
+    from letswork.launcher import register_guest_mcp, launch_guest_claude_code, launch_chat_window
+
+    name = click.prompt("What's your name?")
 
     if not url.endswith("/mcp"):
         url = url.rstrip("/") + "/mcp"
 
-    click.echo(f"\nConnecting to {url} as {user}...")
+    click.echo(f"\nConnecting to {url} as {name}...")
 
     # Register MCP with Claude Code (via stdio proxy — reliable over Cloudflare)
     register_guest_mcp(url, token)
 
     # Open Claude Code in a new Terminal window (banner shows token for reference)
     launch_guest_claude_code(os.getcwd(), url, token)
+
+    # Open chat window in a separate terminal
+    launch_chat_window(url, token, "guest", name, os.getcwd())
 
     click.echo("✅ Claude Code is opening with LetsWork MCP connected.")
     click.echo("   You can close this terminal.")

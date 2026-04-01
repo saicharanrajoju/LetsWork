@@ -9,19 +9,20 @@ app = FastMCP("letswork")
 lock_manager = LockManager()
 event_log = EventLog()
 approval_queue: ApprovalQueue | None = None
-session_token: str = ""
+valid_tokens: set[str] = set()
 project_root: str = ""
 token_to_user: dict[str, str] = {}
 
 
 def check_auth(provided_token: str) -> bool:
-    """Validates a provided token against the session token. Returns False if invalid."""
-    return validate_token(provided_token, session_token)
+    """Validates a provided token against all registered tokens."""
+    return any(validate_token(provided_token, t) for t in valid_tokens)
 
 
 def register_user(token: str, user_id: str) -> None:
-    """Associate a token with a user_id."""
+    """Associate a token with a user_id and mark it as valid."""
     token_to_user[token] = user_id
+    valid_tokens.add(token)
 
 
 def get_user(token: str) -> str:
@@ -204,6 +205,16 @@ def get_status(token: str) -> str:
             status_lines.append(f"  {path} — locked by {user_id}")
             
     return "\n".join(status_lines)
+
+
+@app.tool()
+def register_name(token: str, display_name: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
+    user_id = get_user(token)
+    token_to_user[token] = display_name
+    event_log.emit(EventType.CONNECTION, display_name, {})
+    return f"Registered as {display_name} (was {user_id})"
 
 
 @app.tool()
