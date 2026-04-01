@@ -51,10 +51,21 @@ def make_proxy_server(base_url: str, token: str) -> Server:
         })
         tools = []
         for t in resp.get("result", {}).get("tools", []):
+            schema = t.get("inputSchema", {"type": "object", "properties": {}})
+            # Strip 'token' from schema — proxy injects it automatically
+            schema = dict(schema)
+            props = dict(schema.get("properties", {}))
+            props.pop("token", None)
+            schema["properties"] = props
+            required = [r for r in schema.get("required", []) if r != "token"]
+            if required:
+                schema["required"] = required
+            elif "required" in schema:
+                del schema["required"]
             tools.append(types.Tool(
                 name=t["name"],
                 description=t.get("description", ""),
-                inputSchema=t.get("inputSchema", {"type": "object", "properties": {}}),
+                inputSchema=schema,
             ))
         return tools
 

@@ -2,7 +2,6 @@ import os
 import time
 import click
 import threading
-import logging
 import letswork.server as server_module
 from letswork.auth import generate_token
 from letswork.tunnel import start_tunnel, stop_tunnel
@@ -20,7 +19,7 @@ def start(port):
     """Start a LetsWork collaboration session."""
     from letswork.events import EventLog
     from letswork.approval import ApprovalQueue
-    from letswork.launcher import launch_claude_code
+    from letswork.launcher import launch_claude_code, register_guest_mcp
 
     project_root = os.getcwd()
     server_module.project_root = project_root
@@ -41,36 +40,51 @@ def start(port):
 
     mcp_url = f"{url}/mcp"
 
-    # Suppress all server/framework logs
-    for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "uvicorn.asgi",
-                  "httpx", "mcp", "mcp.server", "asyncio"):
-        _l = logging.getLogger(_name)
-        _l.setLevel(logging.CRITICAL)
-        _l.propagate = False
-    logging.root.setLevel(logging.CRITICAL)
+    # Silence MCP and uvicorn loggers before server starts
+    import logging
+    for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "mcp", "mcp.server",
+                  "mcp.server.streamable_http", "asyncio"):
+        logging.getLogger(_name).setLevel(logging.CRITICAL)
 
-    # Start MCP server in background thread
+    # Disable DNS rebinding protection so Cloudflare tunnel host header is accepted
+    if (hasattr(server_module.app.settings, "transport_security")
+            and server_module.app.settings.transport_security):
+        server_module.app.settings.transport_security.enable_dns_rebinding_protection = False
+
+    # Start MCP server in background thread — run uvicorn directly so we can
+    # pass log_config=None, which fully disables all uvicorn request logging.
     def run_server():
-        import uvicorn.config as _uvc
-        _uvc.LOGGING_CONFIG = {
-            "version": 1,
-            "disable_existing_loggers": False,
-            "handlers": {"null": {"class": "logging.NullHandler"}},
-            "loggers": {
-                "uvicorn":        {"handlers": ["null"], "level": "CRITICAL", "propagate": False},
-                "uvicorn.error":  {"handlers": ["null"], "level": "CRITICAL", "propagate": False},
-                "uvicorn.access": {"handlers": ["null"], "level": "CRITICAL", "propagate": False},
-            },
-        }
-        server_module.app.settings.host = "127.0.0.1"
-        server_module.app.settings.port = port
-        server_module.app.settings.stateless_http = True
-        if hasattr(server_module.app.settings, "transport_security") and server_module.app.settings.transport_security:
-            server_module.app.settings.transport_security.enable_dns_rebinding_protection = False
-        server_module.app.run(transport="streamable-http")
+        import anyio
+        import uvicorn
+
+        async def _serve():
+            starlette_app = server_module.app.streamable_http_app()
+            config = uvicorn.Config(
+                starlette_app,
+                host="127.0.0.1",
+                port=port,
+                log_config=None,
+                log_level="critical",
+            )
+            await uvicorn.Server(config).serve()
+
+        anyio.run(_serve)
 
     threading.Thread(target=run_server, daemon=True).start()
-    time.sleep(2)
+
+    # Wait until the server is actually responding (any HTTP response means it's up)
+    import urllib.request
+    import urllib.error
+    for _ in range(20):
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/mcp", timeout=1)
+        except urllib.error.HTTPError:
+            break  # Got an HTTP response — server is up
+        except Exception:
+            time.sleep(0.5)
+
+    # Register letswork MCP for the host too (needed for approvals)
+    register_guest_mcp(mcp_url, token)
 
     # Open Claude Code in a new Terminal window
     launch_claude_code(project_root, url, token)
