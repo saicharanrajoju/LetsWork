@@ -68,16 +68,11 @@ def launch_claude_code(project_root: str, tunnel_url: str, token: str) -> None:
 
 
 def register_guest_mcp(url: str) -> None:
-    """Register the LetsWork MCP server with the guest's Claude Code."""
-    import threading
-
-    def _configure():
-        subprocess.run(
-            ["claude", "mcp", "add", "letswork", "--transport", "http", url],
-            check=False, capture_output=True, text=True,
-        )
-
-    threading.Thread(target=_configure, daemon=True).start()
+    """Register the LetsWork MCP server with the guest's Claude Code (blocking)."""
+    subprocess.run(
+        ["claude", "mcp", "add", "letswork", "--transport", "http", url],
+        check=False, capture_output=True, text=True,
+    )
 
 
 def launch_guest_claude_code(project_root: str, url: str, token: str) -> None:
