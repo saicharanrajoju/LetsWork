@@ -69,13 +69,16 @@ def launch_claude_code(project_root: str, tunnel_url: str, token: str) -> None:
 
 def register_guest_mcp(url: str) -> None:
     """Register the LetsWork MCP server with the guest's Claude Code (blocking)."""
+    # Strip /mcp suffix — Claude Code's HTTP transport appends it internally
+    base_url = url[:-4] if url.endswith("/mcp") else url
+
     # Remove any stale entry first (old URLs from previous sessions cause "failed" status)
     subprocess.run(
         ["claude", "mcp", "remove", "letswork", "--scope", "user"],
         check=False, capture_output=True, text=True,
     )
     subprocess.run(
-        ["claude", "mcp", "add", "letswork", "--transport", "http", url, "--scope", "user"],
+        ["claude", "mcp", "add", "letswork", "--transport", "http", base_url, "--scope", "user"],
         check=False, capture_output=True, text=True,
     )
 
