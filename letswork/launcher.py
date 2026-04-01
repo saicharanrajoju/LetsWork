@@ -9,12 +9,7 @@ def _open_terminal(command: str, project_root: str) -> bool:
     Returns True if a terminal was launched, False if we fell back to printing.
     """
     if sys.platform == "darwin":
-        script = f'''
-        tell application "Terminal"
-            set w to make new window
-            do script "cd {project_root} && {command}" in w
-        end tell
-        '''
+        script = f'tell application "Terminal" to do script "cd {project_root} && {command}"'
         subprocess.Popen(["osascript", "-e", script])
         return True
 

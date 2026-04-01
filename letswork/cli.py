@@ -41,11 +41,13 @@ def start(port):
 
     mcp_url = f"{url}/mcp"
 
-    # Suppress uvicorn logs
-    for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "uvicorn.asgi", "httpx"):
+    # Suppress all server/framework logs
+    for _name in ("uvicorn", "uvicorn.access", "uvicorn.error", "uvicorn.asgi",
+                  "httpx", "mcp", "mcp.server", "asyncio"):
         _l = logging.getLogger(_name)
         _l.setLevel(logging.CRITICAL)
         _l.propagate = False
+    logging.root.setLevel(logging.CRITICAL)
 
     # Start MCP server in background thread
     def run_server():
