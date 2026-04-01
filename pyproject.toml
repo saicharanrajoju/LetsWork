@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 letswork = "letswork.cli:cli"
+letswork-proxy = "letswork.proxy:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["letswork"]

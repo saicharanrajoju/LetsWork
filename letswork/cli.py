@@ -111,8 +111,8 @@ def join(url, token, user):
 
     click.echo(f"\nConnecting to {url} as {user}...")
 
-    # Register MCP with Claude Code
-    register_guest_mcp(url)
+    # Register MCP with Claude Code (via stdio proxy — reliable over Cloudflare)
+    register_guest_mcp(url, token)
 
     # Open Claude Code in a new Terminal window (banner shows token for reference)
     launch_guest_claude_code(os.getcwd(), url, token)

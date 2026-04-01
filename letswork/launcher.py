@@ -67,18 +67,27 @@ def launch_claude_code(project_root: str, tunnel_url: str, token: str) -> None:
         print("Open a new terminal, cd to your project, and run: claude")
 
 
-def register_guest_mcp(url: str) -> None:
-    """Register the LetsWork MCP server with the guest's Claude Code (blocking)."""
-    # Strip /mcp suffix — Claude Code's HTTP transport appends it internally
-    base_url = url[:-4] if url.endswith("/mcp") else url
+def register_guest_mcp(url: str, token: str) -> None:
+    """Register LetsWork as a stdio proxy MCP with Claude Code (blocking).
 
-    # Remove any stale entry first (old URLs from previous sessions cause "failed" status)
+    Uses stdio transport (always works) rather than HTTP transport (unreliable
+    over Cloudflare SSE). The proxy forwards tool calls to the host via HTTP.
+    """
+    proxy_path = shutil.which("letswork-proxy")
+    if not proxy_path:
+        return
+
+    # Remove any stale entry first
     subprocess.run(
         ["claude", "mcp", "remove", "letswork", "--scope", "user"],
         check=False, capture_output=True, text=True,
     )
     subprocess.run(
-        ["claude", "mcp", "add", "letswork", "--transport", "http", base_url, "--scope", "user"],
+        [
+            "claude", "mcp", "add", "letswork",
+            "--scope", "user",
+            "--", proxy_path, "--url", url, "--token", token,
+        ],
         check=False, capture_output=True, text=True,
     )
 
