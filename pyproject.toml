@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "letswork"
-version = "0.1.3"
+version = "0.1.4"
 description = "Real-time collaborative coding via MCP — two developers, one codebase"
 readme = "README.md"
 license = "MIT"

@@ -77,11 +77,12 @@ def register_guest_mcp(url: str, token: str) -> None:
     if not proxy_path:
         return
 
-    # Remove any stale entry first
-    subprocess.run(
-        ["claude", "mcp", "remove", "letswork", "--scope", "user"],
-        check=False, capture_output=True, text=True,
-    )
+    # Remove any stale entry from all scopes
+    for scope in ("user", "local", "project"):
+        subprocess.run(
+            ["claude", "mcp", "remove", "letswork", "--scope", scope],
+            check=False, capture_output=True, text=True,
+        )
     subprocess.run(
         [
             "claude", "mcp", "add", "letswork",
