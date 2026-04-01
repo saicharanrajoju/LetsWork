@@ -11,7 +11,8 @@ def _open_terminal(command: str, project_root: str) -> bool:
     if sys.platform == "darwin":
         script = f'''
         tell application "Terminal"
-            do script "cd {project_root} && {command}"
+            set w to make new window
+            do script "cd {project_root} && {command}" in w
         end tell
         '''
         subprocess.Popen(["osascript", "-e", script])
