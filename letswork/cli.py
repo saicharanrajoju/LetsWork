@@ -216,7 +216,7 @@ def join(url, token):
     register_guest_mcp(mcp_url, token)
 
     # Open Claude Code in a new Terminal window
-    launch_guest_claude_code(os.getcwd(), mcp_url)
+    launch_guest_claude_code(mcp_url)
 
     click.echo("✅ Claude Code is opening with LetsWork MCP connected.")
     click.echo("   You can close this terminal.")

@@ -21,7 +21,7 @@ def _open_terminal(command: str, project_root: str) -> bool:
     """
     if sys.platform == "darwin":
         script = f'tell application "Terminal" to do script "cd {shlex.quote(project_root)} && {command}"'
-        subprocess.Popen(["osascript", "-e", script])
+        subprocess.Popen(["osascript", "-e", script], stdout=subprocess.DEVNULL)
         return True
 
     if sys.platform.startswith("linux"):
@@ -119,7 +119,7 @@ def register_guest_mcp(url: str, token: str) -> None:
     )
 
 
-def launch_guest_claude_code(project_root: str, url: str) -> None:
+def launch_guest_claude_code(url: str) -> None:
     """Open a new terminal window with Claude Code for the guest."""
     if not shutil.which("claude"):
         print("⚠️  Claude Code not found. Install: npm install -g @anthropic-ai/claude-code")
@@ -162,7 +162,29 @@ def launch_guest_claude_code(project_root: str, url: str) -> None:
             shutil.rmtree(temp_dir, ignore_errors=True)
         return
 
-    launched = _open_terminal(_make_banner(url), project_root)
+    # Create a temp session dir with CLAUDE.md so Claude uses MCP tools
+    temp_dir = tempfile.mkdtemp(prefix="letswork-session-")
+    with open(os.path.join(temp_dir, "CLAUDE.md"), "w", encoding="utf-8") as f:
+        f.write(
+            "# LetsWork Guest Session\n\n"
+            "You are a guest collaborating on a remote project. "
+            "The host's project files are only accessible through LetsWork MCP tools — "
+            "do NOT use local file system tools (Read, Write, Bash, Glob) for project files.\n\n"
+            "IMPORTANT: At the start of the session, ask the user for their name and call "
+            "`mcp__letswork__set_display_name` with it so the host can identify them.\n\n"
+            "Use these tools for all file operations on the host's project:\n"
+            "- `mcp__letswork__set_display_name` — set your display name (do this first)\n"
+            "- `mcp__letswork__list_files` — list files\n"
+            "- `mcp__letswork__read_file` — read a file\n"
+            "- `mcp__letswork__write_file` — submit a change (requires host approval)\n"
+            "- `mcp__letswork__lock_file` — lock a file before editing\n"
+            "- `mcp__letswork__unlock_file` — unlock when done\n"
+            "- `mcp__letswork__get_notifications` — check pending changes and locks\n"
+            "- `mcp__letswork__my_pending_changes` — check your submitted changes\n"
+            "- `mcp__letswork__ping` — verify connection to host\n"
+        )
+
+    launched = _open_terminal(_make_banner(url), temp_dir)
     if not launched:
         print(f"\n✅ MCP registered. Open a new terminal and run:")
         print(f"   claude")
