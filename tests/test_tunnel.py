@@ -9,7 +9,7 @@ def test_start_tunnel_cloudflared_not_installed(mock_which):
     """Verify start_tunnel raises RuntimeError when cloudflared is not found"""
     with pytest.raises(RuntimeError) as exc_info:
         start_tunnel(8080)
-    assert "cloudflared is not installed" in str(exc_info.value)
+    assert "cloudflared not found" in str(exc_info.value)
 
 
 @mock.patch("subprocess.Popen")

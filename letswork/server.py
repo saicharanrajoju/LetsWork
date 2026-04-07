@@ -176,7 +176,7 @@ def write_file(token: str, path: str, content: str) -> str:
     except ValueError:
         event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
         raise
-    relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
+    relative_path = os.path.relpath(resolved_path, os.path.realpath(project_root))
 
     is_locked, holder = lock_manager.is_locked(relative_path)
     if is_locked and holder != user_id:
@@ -215,7 +215,7 @@ def lock_file(token: str, path: str) -> str:
     except ValueError:
         event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
         raise
-    relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
+    relative_path = os.path.relpath(resolved_path, os.path.realpath(project_root))
 
     is_locked, holder = lock_manager.is_locked(relative_path)
     if is_locked and holder != user_id:
@@ -240,7 +240,7 @@ def unlock_file(token: str, path: str) -> str:
     except ValueError:
         event_log.emit(EventType.ERROR, user_id, {"error": f"Path traversal blocked: {path}"})
         raise
-    relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
+    relative_path = os.path.relpath(resolved_path, os.path.realpath(project_root))
 
     if not lock_manager.release_lock(relative_path, user_id):
         event_log.emit(EventType.ERROR, user_id, {"error": f"Unlock failed, wrong owner: {path}"})
@@ -306,7 +306,7 @@ def force_unlock(token: str, path: str) -> str:
         resolved_path = safe_resolve(path, project_root)
     except ValueError:
         raise
-    relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
+    relative_path = os.path.relpath(resolved_path, os.path.realpath(project_root))
     if not lock_manager.force_release(relative_path):
         return f"{path} was not locked"
     event_log.emit(EventType.FILE_UNLOCK, "host", {"path": path, "forced": True})

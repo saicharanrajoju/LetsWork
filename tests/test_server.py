@@ -17,7 +17,7 @@ USER = "test-user"
 
 @pytest.fixture(autouse=True, scope="function")
 def setup_server(tmp_path):
-    server_module.project_root = str(tmp_path)
+    server_module.project_root = str(tmp_path.resolve())
     server_module.session_token = TOKEN
     server_module.lock_manager._locks = {}
     server_module.token_to_user.clear()
@@ -37,7 +37,7 @@ def setup_server(tmp_path):
 
 def test_safe_resolve_valid_path():
     result = safe_resolve("hello.txt", server_module.project_root)
-    assert result == os.path.join(server_module.project_root, "hello.txt")
+    assert result == os.path.realpath(os.path.join(server_module.project_root, "hello.txt"))
 
 
 def test_safe_resolve_traversal_blocked():
