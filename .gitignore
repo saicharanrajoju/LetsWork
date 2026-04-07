@@ -17,6 +17,9 @@ env/
 # Claude Code local config
 .claude/
 
+# LetsWork temporary session file
+CLAUDE.md
+
 # IDE
 .vscode/
 .idea/

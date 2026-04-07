@@ -36,8 +36,11 @@ class ApprovalQueue:
 
     def submit(self, user_id: str, path: str, new_content: str) -> PendingChange:
         change_id = str(uuid.uuid4())[:8]
-        abs_path = os.path.join(self.project_root, path)
-        
+        abs_root = os.path.realpath(self.project_root)
+        abs_path = os.path.realpath(os.path.join(self.project_root, path))
+        if not abs_path.startswith(abs_root + os.sep) and abs_path != abs_root:
+            raise ValueError("Access denied: path outside project directory")
+
         if os.path.isfile(abs_path):
             with open(abs_path, "r", encoding="utf-8") as f:
                 old_content = f.read()
@@ -59,8 +62,8 @@ class ApprovalQueue:
             return False
             
         change = self._pending[change_id]
-        abs_root = os.path.abspath(self.project_root)
-        abs_path = os.path.abspath(os.path.join(self.project_root, change.path))
+        abs_root = os.path.realpath(self.project_root)
+        abs_path = os.path.realpath(os.path.join(self.project_root, change.path))
         if not abs_path.startswith(abs_root + os.sep) and abs_path != abs_root:
             change.status = ApprovalStatus.REJECTED
             self._history.append(change)

@@ -1,7 +1,17 @@
+import os
 import shlex
-import subprocess
 import shutil
+import subprocess
 import sys
+import tempfile
+
+
+def _is_wsl() -> bool:
+    try:
+        with open("/proc/version") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
 
 
 def _open_terminal(command: str, project_root: str) -> bool:
@@ -40,30 +50,33 @@ def _open_terminal(command: str, project_root: str) -> bool:
     return False
 
 
-def _make_banner(mcp_url: str, token: str) -> str:
+def _make_banner(mcp_url: str) -> str:
     """Shell command that prints the LetsWork banner then launches claude."""
     return (
         f"clear && "
-        f"echo '╔══════════════════════════════════════════════════╗' && "
-        f"echo '║  Claude Code — Connected to LetsWork             ║' && "
-        f"echo '║                                                  ║' && "
-        f"echo '║  MCP URL: {mcp_url}' && "
-        f"echo '║  Token:   {token}' && "
-        f"echo '║                                                  ║' && "
-        f"echo '║  Try: list_files, read_file, write_file          ║' && "
-        f"echo '╚══════════════════════════════════════════════════╝' && "
+        f"echo '╔══════════════════════════════════════════════════════════╗' && "
+        f"echo '║  Claude Code — Connected to LetsWork                     ║' && "
+        f"echo '║                                                          ║' && "
+        f"echo '║  MCP: {mcp_url}' && "
+        f"echo '║                                                          ║' && "
+        f"echo '║  Try asking Claude:                                      ║' && "
+        f"echo '║    \"list the files\"        — browse the host project     ║' && "
+        f"echo '║    \"read <filename>\"       — view any file               ║' && "
+        f"echo '║    \"any pending changes?\" — check approvals & locks      ║' && "
+        f"echo '║                                                          ║' && "
+        f"echo '╚══════════════════════════════════════════════════════════╝' && "
         f"echo '' && claude"
     )
 
 
-def launch_claude_code(project_root: str, tunnel_url: str, token: str) -> None:
+def launch_claude_code(project_root: str, tunnel_url: str) -> None:
     """Open a new terminal window with Claude Code for the host."""
     if not shutil.which("claude"):
         print("⚠️  Claude Code not found. Install: npm install -g @anthropic-ai/claude-code")
         return
 
     mcp_url = f"{tunnel_url}/mcp"
-    launched = _open_terminal(_make_banner(mcp_url, token), project_root)
+    launched = _open_terminal(_make_banner(mcp_url), project_root)
     if not launched:
         print("Open a new terminal, cd to your project, and run: claude")
 
@@ -99,15 +112,52 @@ def register_guest_mcp(url: str, token: str) -> None:
     )
 
 
-def launch_guest_claude_code(project_root: str, url: str, token: str) -> None:
+def launch_guest_claude_code(project_root: str, url: str) -> None:
     """Open a new terminal window with Claude Code for the guest."""
     if not shutil.which("claude"):
         print("⚠️  Claude Code not found. Install: npm install -g @anthropic-ai/claude-code")
         return
 
-    launched = _open_terminal(_make_banner(url, token), project_root)
+    if _is_wsl():
+        # WSL has no display server — launch claude directly in this terminal
+        # Create a temp session directory with CLAUDE.md so Claude knows to use MCP tools
+        temp_dir = tempfile.mkdtemp(prefix="letswork-session-")
+        try:
+            with open(os.path.join(temp_dir, "CLAUDE.md"), "w", encoding="utf-8") as f:
+                f.write(
+                    "# LetsWork Guest Session\n\n"
+                    "You are a guest collaborating on a remote project. "
+                    "The host's project files are only accessible through LetsWork MCP tools — "
+                    "do NOT use local file system tools (Read, Write, Bash, Glob) for project files.\n\n"
+                    "IMPORTANT: At the start of the session, ask the user for their name and call "
+                    "`mcp__letswork__set_display_name` with it so the host can identify them.\n\n"
+                    "Use these tools for all file operations on the host's project:\n"
+                    "- `mcp__letswork__set_display_name` — set your display name (do this first)\n"
+                    "- `mcp__letswork__list_files` — list files\n"
+                    "- `mcp__letswork__read_file` — read a file\n"
+                    "- `mcp__letswork__write_file` — submit a change (requires host approval)\n"
+                    "- `mcp__letswork__lock_file` — lock a file before editing\n"
+                    "- `mcp__letswork__unlock_file` — unlock when done\n"
+                    "- `mcp__letswork__get_notifications` — check pending changes and locks\n"
+                    "- `mcp__letswork__my_pending_changes` — check your submitted changes\n"
+                    "- `mcp__letswork__ping` — verify connection to host\n"
+                )
+            print("\n✅ MCP registered. Launching Claude Code...\n")
+            print("  Try asking Claude:")
+            print('    "list the files"        — browse the host project')
+            print('    "read <filename>"       — view any file')
+            print('    "any pending changes?"  — check approvals & locks')
+            print("")
+            subprocess.run(["claude"], cwd=temp_dir)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        return
+
+    launched = _open_terminal(_make_banner(url), project_root)
     if not launched:
-        print(f"\n✅ MCP registered. Now open a new terminal and run:")
-        print(f"   cd {project_root} && claude")
+        print(f"\n✅ MCP registered. Open a new terminal and run:")
+        print(f"   claude")
 
 

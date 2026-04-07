@@ -31,11 +31,24 @@ def get_user(token: str) -> str:
 
 
 def safe_resolve(path: str, root: str) -> str:
-    abs_root = os.path.abspath(root)
-    resolved = os.path.abspath(os.path.join(abs_root, path))
+    abs_root = os.path.realpath(root)
+    resolved = os.path.realpath(os.path.join(abs_root, path))
     if not resolved.startswith(abs_root + os.sep) and resolved != abs_root:
         raise ValueError("Access denied: path outside project directory")
     return resolved
+
+@app.tool()
+def set_display_name(token: str, name: str) -> str:
+    """Set your display name for this session (guest only)."""
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
+    if get_user(token) == "host":
+        raise ValueError("Host display name cannot be changed")
+    if not name or not name.strip():
+        raise ValueError("Name cannot be empty")
+    token_to_user[token] = name.strip()
+    return f"Display name set to '{name.strip()}'"
+
 
 @app.tool()
 def ping(token: str) -> str:
@@ -280,6 +293,24 @@ def my_pending_changes(token: str) -> str:
     for change in pending:
         lines.append(f"  [{change.id}] {change.path}")
     return "\n".join(lines)
+
+
+@app.tool()
+def force_unlock(token: str, path: str) -> str:
+    """Host-only: force-release a lock regardless of who holds it."""
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
+    if get_user(token) != "host":
+        raise ValueError("Only the host can force-unlock files")
+    try:
+        resolved_path = safe_resolve(path, project_root)
+    except ValueError:
+        raise
+    relative_path = os.path.relpath(resolved_path, os.path.abspath(project_root))
+    if not lock_manager.force_release(relative_path):
+        return f"{path} was not locked"
+    event_log.emit(EventType.FILE_UNLOCK, "host", {"path": path, "forced": True})
+    return f"Force-unlocked {path}"
 
 
 @app.tool()

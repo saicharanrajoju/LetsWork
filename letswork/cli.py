@@ -104,12 +104,39 @@ def start(port, debug):
 
     click.echo(f"[letswork] MCP server running on port {port}", err=True)
 
+    # Background thread: expire stale locks every 60 seconds
+    def _lock_cleanup():
+        while True:
+            time.sleep(60)
+            expired = server_module.lock_manager.release_expired(max_age_seconds=1800)
+            for path in expired:
+                event_log.emit(EventType.FILE_UNLOCK, "system", {"path": path, "expired": True})
+
+    threading.Thread(target=_lock_cleanup, daemon=True).start()
+
+    # Write CLAUDE.md into the project root so Claude Code knows about letswork tools
+    claude_md_path = os.path.join(project_root, "CLAUDE.md")
+    _created_claude_md = not os.path.exists(claude_md_path)
+    if _created_claude_md:
+        with open(claude_md_path, "w", encoding="utf-8") as f:
+            f.write(
+                "# LetsWork Session Active\n\n"
+                "A guest is connected and collaborating on this project via MCP.\n\n"
+                "Use these MCP tools to manage the collaboration:\n"
+                "- `get_notifications` — check pending changes and active locks\n"
+                "- `get_pending_changes` — review guest edits with diffs\n"
+                "- `approve_change` — approve and write a guest's change to disk\n"
+                "- `reject_change` — reject a guest's change\n"
+                "- `force_unlock` — release a stuck file lock (host only)\n"
+                "- `get_status` — see connected users and session info\n"
+            )
+
     # Register letswork MCP for the host (needed for approvals)
     click.echo("[letswork] Registering host MCP...", err=True)
     register_guest_mcp(mcp_url, host_token)
 
     # Open Claude Code in a new Terminal window
-    launch_claude_code(project_root, url, host_token)
+    launch_claude_code(project_root, url)
 
     join_cmd = f"letswork join {url} --token {guest_token}"
 
@@ -166,6 +193,8 @@ def start(port, debug):
         click.echo("\n[letswork] Shutting down...")
     finally:
         stop_tunnel(tunnel_process)
+        if _created_claude_md and os.path.exists(claude_md_path):
+            os.remove(claude_md_path)
         click.echo("[letswork] Session ended.")
 
 
@@ -187,7 +216,7 @@ def join(url, token):
     register_guest_mcp(mcp_url, token)
 
     # Open Claude Code in a new Terminal window
-    launch_guest_claude_code(os.getcwd(), mcp_url, token)
+    launch_guest_claude_code(os.getcwd(), mcp_url)
 
     click.echo("✅ Claude Code is opening with LetsWork MCP connected.")
     click.echo("   You can close this terminal.")

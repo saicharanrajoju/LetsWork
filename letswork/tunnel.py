@@ -1,12 +1,39 @@
 import subprocess
 import shutil
 import re
+import platform
+import sys
+
+
+def _cloudflared_install_hint() -> str:
+    os_name = platform.system()
+    if os_name == "Darwin":
+        return "  brew install cloudflared"
+    elif os_name == "Linux":
+        return (
+            "  # Debian/Ubuntu:\n"
+            "  curl -L https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg > /dev/null\n"
+            "  echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list\n"
+            "  sudo apt update && sudo apt install cloudflared\n\n"
+            "  # Or direct binary download:\n"
+            "  curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared\n"
+            "  chmod +x cloudflared && sudo mv cloudflared /usr/local/bin/"
+        )
+    elif os_name == "Windows":
+        return "  winget install Cloudflare.cloudflared"
+    else:
+        return "  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/"
 
 
 def start_tunnel(port: int) -> tuple[str, subprocess.Popen]:
     """Start a Cloudflare tunnel pointing to the local MCP server port. Returns the HTTPS URL and the subprocess handle."""
     if shutil.which("cloudflared") is None:
-        raise RuntimeError("cloudflared is not installed. Install it from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/")
+        hint = _cloudflared_install_hint()
+        print("\n[letswork] cloudflared is required to share your session over the internet.", file=sys.stderr)
+        print("[letswork] Install it with:\n", file=sys.stderr)
+        print(hint, file=sys.stderr)
+        print("", file=sys.stderr)
+        raise RuntimeError("cloudflared not found — see install instructions above")
         
     command = ["cloudflared", "tunnel", "--url", f"http://localhost:{port}"]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

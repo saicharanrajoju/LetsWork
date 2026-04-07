@@ -26,7 +26,6 @@ packages = ["letswork"]
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "types-requests",
 ]
 
 [tool.setuptools.packages.find]
