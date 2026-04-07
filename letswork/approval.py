@@ -25,6 +25,14 @@ class ApprovalQueue:
         self.project_root = project_root
         self._pending: dict[str, PendingChange] = {}
         self._history: list[PendingChange] = []
+        self._on_approved = None
+        self._on_rejected = None
+
+    def on_approved(self, callback) -> None:
+        self._on_approved = callback
+
+    def on_rejected(self, callback) -> None:
+        self._on_rejected = callback
 
     def submit(self, user_id: str, path: str, new_content: str) -> PendingChange:
         change_id = str(uuid.uuid4())[:8]
@@ -69,16 +77,20 @@ class ApprovalQueue:
         change.status = ApprovalStatus.APPROVED
         self._history.append(change)
         del self._pending[change_id]
+        if self._on_approved:
+            self._on_approved(change)
         return True
 
     def reject(self, change_id: str) -> bool:
         if change_id not in self._pending:
             return False
-            
+
         change = self._pending[change_id]
         change.status = ApprovalStatus.REJECTED
         self._history.append(change)
         del self._pending[change_id]
+        if self._on_rejected:
+            self._on_rejected(change)
         return True
 
     def get_pending(self) -> list[PendingChange]:

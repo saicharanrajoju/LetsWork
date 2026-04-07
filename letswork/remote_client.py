@@ -111,14 +111,5 @@ class RemoteClient:
     def unlock_file(self, path: str) -> str:
         return self._call_tool("unlock_file", {"token": self.token, "path": path})
 
-    def register_name(self, display_name: str) -> str:
-        return self._call_tool("register_name", {"token": self.token, "display_name": display_name})
-
-    def send_message(self, message: str) -> str:
-        return self._call_tool("send_message", {"token": self.token, "message": message})
-
-    def get_events(self, since_index: int = 0) -> str:
-        return self._call_tool("get_events", {"token": self.token, "since_index": since_index})
-
     def get_status(self) -> str:
         return self._call_tool("get_status", {"token": self.token})

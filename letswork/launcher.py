@@ -15,12 +15,12 @@ def _open_terminal(command: str, project_root: str) -> bool:
         return True
 
     if sys.platform.startswith("linux"):
-        # Try common Linux terminal emulators in order of preference
+        quoted = shlex.quote(project_root)
         for term, args in [
-            ("gnome-terminal", ["--", "bash", "-c", f"cd {project_root} && {command}; exec bash"]),
-            ("xfce4-terminal", ["-e", f"bash -c 'cd {project_root} && {command}; exec bash'"]),
-            ("konsole", ["--noclose", "-e", "bash", "-c", f"cd {project_root} && {command}"]),
-            ("xterm", ["-e", f"bash -c 'cd {project_root} && {command}; exec bash'"]),
+            ("gnome-terminal", ["--", "bash", "-c", f"cd {quoted} && {command}; exec bash"]),
+            ("xfce4-terminal", ["-e", f"bash -c 'cd {quoted} && {command}; exec bash'"]),
+            ("konsole", ["--noclose", "-e", "bash", "-c", f"cd {quoted} && {command}"]),
+            ("xterm", ["-e", f"bash -c 'cd {quoted} && {command}; exec bash'"]),
         ]:
             if shutil.which(term):
                 subprocess.Popen([term] + args)
@@ -74,8 +74,13 @@ def register_guest_mcp(url: str, token: str) -> None:
     Uses stdio transport (always works) rather than HTTP transport (unreliable
     over Cloudflare SSE). The proxy forwards tool calls to the host via HTTP.
     """
+    if not shutil.which("claude"):
+        print("⚠️  Claude Code not found. Install: npm install -g @anthropic-ai/claude-code")
+        return
+
     proxy_path = shutil.which("letswork-proxy")
     if not proxy_path:
+        print("⚠️  letswork-proxy not found. Try: pip install --upgrade letswork")
         return
 
     # Remove any stale entry from all scopes
@@ -102,25 +107,7 @@ def launch_guest_claude_code(project_root: str, url: str, token: str) -> None:
 
     launched = _open_terminal(_make_banner(url, token), project_root)
     if not launched:
-        print("Open a new terminal, cd to your project, and run: claude")
+        print(f"\n✅ MCP registered. Now open a new terminal and run:")
+        print(f"   cd {project_root} && claude")
 
 
-def launch_chat_window(url: str, token: str, role: str, name: str, project_root: str) -> None:
-    """Open a new terminal window running the LetsWork chat window."""
-    args = (
-        f" --url {shlex.quote(url)}"
-        f" --token {shlex.quote(token)}"
-        f" --role {role}"
-        f" --name {shlex.quote(name)}"
-    )
-    # Prefer the installed script (resolves correctly when venv is active).
-    # Fall back to the Python that's running this process.
-    chat_bin = shutil.which("letswork-chat")
-    if chat_bin:
-        cmd = shlex.quote(chat_bin) + args
-    else:
-        python = shlex.quote(sys.executable)
-        cmd = f"{python} -m letswork.tui.chat_app{args}"
-    launched = _open_terminal(cmd, project_root)
-    if not launched:
-        print(f"Run in a new terminal: {cmd}")

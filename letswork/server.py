@@ -38,7 +38,49 @@ def safe_resolve(path: str, root: str) -> str:
     return resolved
 
 @app.tool()
-def list_files(token: str, path: str = ".") -> str:
+def ping(token: str) -> str:
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
+    user_id = get_user(token)
+    event_log.emit(EventType.PING, user_id, {})
+    return f"pong — connected to {project_root} as {user_id}"
+
+
+@app.tool()
+def get_notifications(token: str) -> str:
+    """Returns a summary of what needs attention right now."""
+    if not check_auth(token):
+        raise ValueError("Unauthorized: invalid token")
+    user_id = get_user(token)
+    lines = []
+
+    if approval_queue is not None:
+        pending = approval_queue.get_pending()
+        if pending:
+            lines.append(f"⏳ {len(pending)} change(s) pending approval:")
+            for change in pending:
+                lines.append(f"   • [{change.id}] {change.path} — submitted by {change.user_id}")
+            if user_id == "host":
+                lines.append("   → use approve_change or reject_change to action them")
+            else:
+                lines.append("   → waiting for host to review")
+        else:
+            lines.append("✅ No pending changes")
+
+    locks = lock_manager.get_locks()
+    if locks:
+        lines.append(f"🔒 {len(locks)} active lock(s):")
+        for path, holder in sorted(locks.items()):
+            lines.append(f"   • {path} — locked by {holder}")
+
+    if not lines:
+        lines.append("✅ All clear — nothing needs attention")
+
+    return "\n".join(lines)
+
+
+@app.tool()
+def list_files(token: str, path: str = ".", recursive: bool = False) -> str:
     if not check_auth(token):
         raise ValueError("Unauthorized: invalid token")
     user_id = get_user(token)
@@ -51,28 +93,34 @@ def list_files(token: str, path: str = ".") -> str:
 
     if not os.path.exists(resolved_path):
         raise ValueError(f"Path not found: {path}")
-
     if not os.path.isdir(resolved_path):
         raise ValueError(f"Not a directory: {path}")
-        
-    listing = os.listdir(resolved_path)
-    listing.sort()
-    
-    if not listing:
-        return "Directory is empty"
-        
+
     result_lines = []
-    for entry in listing:
-        full_entry_path = os.path.join(resolved_path, entry)
-        relative_path = os.path.relpath(full_entry_path, project_root)
-        entry_type = "[dir]" if os.path.isdir(full_entry_path) else "[file]"
-        
-        is_locked, holder = lock_manager.is_locked(relative_path)
-        lock_info = f" [locked by {holder}]" if is_locked else ""
-        
-        result_lines.append(f"{entry_type} {relative_path}{lock_info}")
-        
-    return "\n".join(result_lines)
+
+    if recursive:
+        for root_dir, dirs, files in os.walk(resolved_path):
+            # Skip hidden dirs and common noise
+            dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in ("__pycache__", "node_modules", ".venv", "venv"))
+            for fname in sorted(files):
+                if fname.startswith("."):
+                    continue
+                full = os.path.join(root_dir, fname)
+                rel = os.path.relpath(full, project_root)
+                is_locked, holder = lock_manager.is_locked(rel)
+                lock_info = f" [locked by {holder}]" if is_locked else ""
+                result_lines.append(f"[file] {rel}{lock_info}")
+    else:
+        listing = sorted(os.listdir(resolved_path))
+        for entry in listing:
+            full_entry_path = os.path.join(resolved_path, entry)
+            relative_path = os.path.relpath(full_entry_path, project_root)
+            entry_type = "[dir]" if os.path.isdir(full_entry_path) else "[file]"
+            is_locked, holder = lock_manager.is_locked(relative_path)
+            lock_info = f" [locked by {holder}]" if is_locked else ""
+            result_lines.append(f"{entry_type} {relative_path}{lock_info}")
+
+    return "\n".join(result_lines) if result_lines else "Directory is empty"
 
 
 @app.tool()
@@ -195,53 +243,43 @@ def get_status(token: str) -> str:
         raise ValueError("Unauthorized: invalid token")
     status_lines = []
     status_lines.append(f"Project root: {project_root}")
-    
+
+    users = list(set(token_to_user.values()))
+    status_lines.append(f"Connected users: {', '.join(users) if users else 'none'}")
+
     locks = lock_manager.get_locks()
     if not locks:
         status_lines.append("Active locks: none")
     else:
         status_lines.append("Active locks:")
-        for path, user_id in sorted(locks.items()):
-            status_lines.append(f"  {path} — locked by {user_id}")
-            
+        for path, uid in sorted(locks.items()):
+            status_lines.append(f"  {path} — locked by {uid}")
+
+    if approval_queue is not None:
+        pending = approval_queue.get_pending()
+        if pending:
+            status_lines.append(f"Pending approvals: {len(pending)}")
+            for change in pending:
+                status_lines.append(f"  [{change.id}] {change.path} by {change.user_id}")
+
     return "\n".join(status_lines)
 
 
 @app.tool()
-def register_name(token: str, display_name: str) -> str:
+def my_pending_changes(token: str) -> str:
+    """Show only your own pending changes awaiting approval."""
     if not check_auth(token):
         raise ValueError("Unauthorized: invalid token")
     user_id = get_user(token)
-    token_to_user[token] = display_name
-    event_log.emit(EventType.CONNECTION, display_name, {})
-    return f"Registered as {display_name} (was {user_id})"
-
-
-@app.tool()
-def send_message(token: str, message: str) -> str:
-    if not check_auth(token):
-        raise ValueError("Unauthorized: invalid token")
-    user_id = get_user(token)
-    if not message.strip():
-        raise ValueError("Message cannot be empty")
-    event_log.emit(EventType.CHAT_MESSAGE, user_id, {"message": message})
-    return f"Message sent by {user_id}"
-
-
-@app.tool()
-def get_events(token: str, since_index: int = 0) -> str:
-    if not check_auth(token):
-        raise ValueError("Unauthorized: invalid token")
-    if since_index >= len(event_log._events):
-        return "no_new_events"
-    
-    new_events = event_log._events[since_index:]
-    result_lines = []
-    for event in new_events:
-        result_lines.append(event.message)
-        
-    result_lines.append(f"__INDEX__:{len(event_log._events)}")
-    return "\n".join(result_lines)
+    if approval_queue is None:
+        return "No approval system active"
+    pending = [c for c in approval_queue.get_pending() if c.user_id == user_id]
+    if not pending:
+        return "You have no pending changes"
+    lines = [f"{len(pending)} change(s) pending approval:"]
+    for change in pending:
+        lines.append(f"  [{change.id}] {change.path}")
+    return "\n".join(lines)
 
 
 @app.tool()

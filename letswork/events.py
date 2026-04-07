@@ -10,8 +10,8 @@ class EventType(str, Enum):
     FILE_WRITE = "file_write"
     FILE_LOCK = "file_lock"
     FILE_UNLOCK = "file_unlock"
-    CHAT_MESSAGE = "chat_message"
     FILE_TREE_REQUEST = "file_tree_request"
+    PING = "ping"
     ERROR = "error"
 
 @dataclass
@@ -73,8 +73,6 @@ class EventLog:
             return f"[{time}] 🔒 {user_id} locked {data.get('path', '?')}"
         elif event_type == EventType.FILE_UNLOCK:
             return f"[{time}] 🔓 {user_id} unlocked {data.get('path', '?')}"
-        elif event_type == EventType.CHAT_MESSAGE:
-            return f"[{time}] 💬 {user_id}: {data.get('message', '')}"
         elif event_type == EventType.FILE_TREE_REQUEST:
             return f"[{time}] 📁 {user_id} viewed file tree"
             
