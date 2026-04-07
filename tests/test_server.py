@@ -9,8 +9,6 @@ from letswork.server import (
     lock_file,
     unlock_file,
     get_status,
-    send_message,
-    get_events,
 )
 
 TOKEN = "test-token"
@@ -156,38 +154,4 @@ def test_get_status_with_locks():
     assert "locked by alice" in result
 
 
-# ── send_message ──────────────────────────────────────────────────────────────
 
-def test_send_message_success():
-    result = send_message(TOKEN, "hello team")
-    assert "Message sent" in result
-    events = server_module.event_log._events
-    assert any("hello team" in e.data.get("message", "") for e in events)
-
-
-def test_send_message_empty_rejected():
-    with pytest.raises(ValueError) as exc_info:
-        send_message(TOKEN, "   ")
-    assert "empty" in str(exc_info.value).lower()
-
-
-# ── get_events ────────────────────────────────────────────────────────────────
-
-def test_get_events_no_new():
-    result = get_events(TOKEN, since_index=0)
-    assert result == "no_new_events"
-
-
-def test_get_events_returns_events():
-    server_module.event_log.emit(server_module.EventType.CHAT_MESSAGE, USER, {"message": "hi"})
-    result = get_events(TOKEN, since_index=0)
-    assert "hi" in result
-    assert "__INDEX__:1" in result
-
-
-def test_get_events_since_index():
-    server_module.event_log.emit(server_module.EventType.FILE_READ, USER, {"path": "a.txt"})
-    server_module.event_log.emit(server_module.EventType.FILE_READ, USER, {"path": "b.txt"})
-    result = get_events(TOKEN, since_index=1)
-    assert "b.txt" in result
-    assert "a.txt" not in result
