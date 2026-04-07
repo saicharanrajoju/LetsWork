@@ -76,6 +76,13 @@ def launch_claude_code(project_root: str, tunnel_url: str) -> None:
         return
 
     mcp_url = f"{tunnel_url}/mcp"
+
+    if _is_wsl():
+        print("\n✅ MCP registered. Open a new Ubuntu terminal tab and run:")
+        print(f"   cd {project_root} && claude")
+        print("")
+        return
+
     launched = _open_terminal(_make_banner(mcp_url), project_root)
     if not launched:
         print("Open a new terminal, cd to your project, and run: claude")
